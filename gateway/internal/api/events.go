@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -250,7 +249,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			flusher.Flush()
 		case <-expiry.C:
-			if _, err := s.store.SessionEmail(r.Context(), token); errors.Is(err, store.ErrNotFound) {
+			if u, status, _ := s.authenticate(r, token); u == nil && status == http.StatusUnauthorized {
 				fmt.Fprint(w, "event: expired\ndata: {}\n\n")
 				flusher.Flush()
 				return

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       target: server
-    image: arca-server:1.1.0
+    image: arca-server:1.2.0
     restart: unless-stopped
     environment:
       ARCA_PASSWORD: ${ARCA_PASSWORD:?defina ARCA_PASSWORD no arquivo .env}
@@ -23,13 +23,14 @@ services:
     build:
       context: .
       target: gateway
-    image: arca-gateway:1.1.0
+    image: arca-gateway:1.2.0
     restart: unless-stopped
     depends_on:
       arca:
         condition: service_healthy
     environment:
       ARCA_ADDR: arca:7379
+      ARCA_PUBLIC_ADDR: ${ARCA_PUBLIC_ADDR:-localhost:7379}
       ARCA_PASSWORD: ${ARCA_PASSWORD}
       ARCA_SEED: ${ARCA_SEED:-true}
       ARCA_SESSION_HOURS: ${ARCA_SESSION_HOURS:-12}

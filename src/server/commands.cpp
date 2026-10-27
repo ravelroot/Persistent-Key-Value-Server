@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <random>
 #include <unordered_map>
 
 #include "server/server.hpp"
@@ -358,13 +359,7 @@ struct Commands {
     resp::AppendSimple(out, "OK");
   }
 
-  static void Command(Server&, Connection&, Args& a, std::string* out) {
-    if (a.size() > 1 && Upper(a[1]) == "COUNT") {
-      resp::AppendInteger(out, 0);
-      return;
-    }
-    resp::AppendArray(out, 0);
-  }
+  static void Command(Server&, Connection&, Args& a, std::string* out);
 
   static void Time(Server&, Connection&, Args&, std::string* out) {
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -849,8 +844,7 @@ struct Commands {
         return;
       }
     }
-    std::filesystem::path base = std::filesystem::path(s.config_.dir).parent_path() / "checkpoints";
-    if (std::filesystem::path(s.config_.dir).parent_path().empty()) base = "checkpoints";
+    std::filesystem::path base = CheckpointBase(s);
     std::error_code ec;
     std::filesystem::create_directories(base, ec);
     std::string target = (base / name).string();
@@ -971,6 +965,339 @@ struct Commands {
     resp::AppendBulk(out, j);
   }
 
+
+  static std::filesystem::path CheckpointBase(Server& s) {
+    std::filesystem::path parent = std::filesystem::path(s.config_.dir).parent_path();
+    return parent.empty() ? std::filesystem::path("checkpoints") : parent / "checkpoints";
+  }
+
+  static bool ParseExpireOption(Args& a, size_t i, int64_t* expire_ms, bool* persist, bool* given, std::string* out) {
+    *given = false;
+    *persist = false;
+    *expire_ms = 0;
+    while (i < a.size()) {
+      std::string opt = Upper(a[i]);
+      if (*given) {
+        resp::AppendError(out, "ERR erro de sintaxe");
+        return false;
+      }
+      if (opt == "PERSIST") {
+        *persist = true;
+        *given = true;
+        ++i;
+        continue;
+      }
+      if ((opt == "EX" || opt == "PX" || opt == "EXAT" || opt == "PXAT") && i + 1 < a.size()) {
+        int64_t n = 0;
+        if (!ParseInt64(a[i + 1], &n) || n <= 0) {
+          resp::AppendError(out, "ERR tempo de expiração inválido");
+          return false;
+        }
+        if (opt == "EX") *expire_ms = NowMs() + n * 1000;
+        if (opt == "PX") *expire_ms = NowMs() + n;
+        if (opt == "EXAT") *expire_ms = n * 1000;
+        if (opt == "PXAT") *expire_ms = n;
+        *given = true;
+        i += 2;
+        continue;
+      }
+      resp::AppendError(out, "ERR erro de sintaxe");
+      return false;
+    }
+    return true;
+  }
+
+  static void GetEx(Server& s, Connection& c, Args& a, std::string* out) {
+    int64_t expire_ms = 0;
+    bool persist = false;
+    bool given = false;
+    if (!ParseExpireOption(a, 2, &expire_ms, &persist, &given, out)) return;
+    auto locks = s.LockKeys({a[1]});
+    KvRecord rec;
+    if (!CheckRead(s, ReadKv(s, c, a[1], &rec), out)) return;
+    CountRead(s, rec.exists);
+    if (!rec.exists) {
+      resp::AppendNull(out);
+      return;
+    }
+    if (given && !(persist && rec.expire_ms == 0)) {
+      WriteBatch batch;
+      if (!persist && expire_ms <= NowMs()) {
+        batch.Delete(KvKey(a[1]));
+      } else {
+        WriteKv(&batch, a[1], rec.value, persist ? 0 : expire_ms);
+      }
+      if (!Commit(s, &batch, out)) return;
+    }
+    resp::AppendBulk(out, rec.value);
+  }
+
+  static void GetRange(Server& s, Connection& c, Args& a, std::string* out) {
+    int64_t start = 0;
+    int64_t end = 0;
+    if (!ParseInt64(a[2], &start) || !ParseInt64(a[3], &end)) {
+      resp::AppendError(out, "ERR o valor não é um inteiro ou está fora do intervalo");
+      return;
+    }
+    KvRecord rec;
+    if (!CheckRead(s, ReadKv(s, c, a[1], &rec), out)) return;
+    CountRead(s, rec.exists);
+    int64_t len = static_cast<int64_t>(rec.value.size());
+    if (start < 0 && end < 0 && start > end) {
+      resp::AppendBulk(out, "");
+      return;
+    }
+    if (start < 0) start += len;
+    if (end < 0) end += len;
+    if (start < 0) start = 0;
+    if (end < 0) end = 0;
+    if (end >= len) end = len - 1;
+    if (len == 0 || start > end) {
+      resp::AppendBulk(out, "");
+      return;
+    }
+    resp::AppendBulk(out, std::string_view(rec.value).substr(static_cast<size_t>(start), static_cast<size_t>(end - start + 1)));
+  }
+
+  static void SetRange(Server& s, Connection& c, Args& a, std::string* out) {
+    int64_t offset = 0;
+    if (!ParseInt64(a[2], &offset) || offset < 0) {
+      resp::AppendError(out, "ERR o deslocamento está fora do intervalo");
+      return;
+    }
+    if (offset + static_cast<int64_t>(a[3].size()) > (512LL << 20)) {
+      resp::AppendError(out, "ERR o valor passaria do limite de 512 MB");
+      return;
+    }
+    auto locks = s.LockKeys({a[1]});
+    KvRecord rec;
+    if (!CheckRead(s, ReadKv(s, c, a[1], &rec), out)) return;
+    if (a[3].empty()) {
+      resp::AppendInteger(out, static_cast<int64_t>(rec.value.size()));
+      return;
+    }
+    std::string value = rec.value;
+    size_t need = static_cast<size_t>(offset) + a[3].size();
+    if (value.size() < need) value.resize(need, '\0');
+    value.replace(static_cast<size_t>(offset), a[3].size(), a[3]);
+    WriteBatch batch;
+    WriteKv(&batch, a[1], value, rec.exists ? rec.expire_ms : 0);
+    if (Commit(s, &batch, out)) resp::AppendInteger(out, static_cast<int64_t>(value.size()));
+  }
+
+  static void Copy(Server& s, Connection& c, Args& a, std::string* out) {
+    bool replace = false;
+    for (size_t i = 3; i < a.size(); ++i) {
+      std::string opt = Upper(a[i]);
+      if (opt == "REPLACE") {
+        replace = true;
+      } else if (opt == "DB" && i + 1 < a.size()) {
+        if (a[++i] != "0") {
+          resp::AppendError(out, "ERR a Arca tem um único banco (0)");
+          return;
+        }
+      } else {
+        resp::AppendError(out, "ERR erro de sintaxe");
+        return;
+      }
+    }
+    if (a[1] == a[2]) {
+      resp::AppendError(out, "ERR origem e destino são a mesma chave");
+      return;
+    }
+    auto locks = s.LockKeys({a[1], a[2]});
+    KvRecord src;
+    if (!CheckRead(s, ReadKv(s, c, a[1], &src), out)) return;
+    if (!src.exists) {
+      resp::AppendInteger(out, 0);
+      return;
+    }
+    if (!replace) {
+      KvRecord dst;
+      if (!CheckRead(s, ReadKv(s, c, a[2], &dst), out)) return;
+      if (dst.exists) {
+        resp::AppendInteger(out, 0);
+        return;
+      }
+    }
+    WriteBatch batch;
+    WriteKv(&batch, a[2], src.value, src.expire_ms);
+    if (Commit(s, &batch, out)) resp::AppendInteger(out, 1);
+  }
+
+  static void Touch(Server& s, Connection& c, Args& a, std::string* out) {
+    int64_t n = 0;
+    for (size_t i = 1; i < a.size(); ++i) {
+      KvRecord rec;
+      if (!CheckRead(s, ReadKv(s, c, a[i], &rec), out)) return;
+      n += rec.exists ? 1 : 0;
+    }
+    resp::AppendInteger(out, n);
+  }
+
+  static void RandomKey(Server& s, Connection& c, Args&, std::string* out) {
+    thread_local std::mt19937_64 rng{std::random_device{}()};
+    ReadOptions ro;
+    ro.snapshot = c.session.snapshot.get();
+    ro.fill_cache = false;
+    auto it = s.db_->NewIterator(ro);
+    int64_t now = NowMs();
+    std::string start = KvKey(std::string(1, static_cast<char>(rng() & 0xff)));
+    for (int pass = 0; pass < 2; ++pass) {
+      size_t examined = 0;
+      for (it->Seek(pass == 0 ? start : KvKey("")); it->Valid() && examined < 100000; it->Next(), ++examined) {
+        std::string_view k = it->key();
+        if (k.empty() || k[0] != '\x01') break;
+        KvRecord rec;
+        if (!DecodeKv(it->value(), &rec)) continue;
+        if (rec.expire_ms > 0 && rec.expire_ms <= now) continue;
+        resp::AppendBulk(out, k.substr(1));
+        return;
+      }
+    }
+    resp::AppendNull(out);
+  }
+
+  static void ExpireTime(Server& s, Connection& c, Args& a, std::string* out) {
+    KvRecord rec;
+    if (!CheckRead(s, ReadKv(s, c, a[1], &rec), out)) return;
+    if (!rec.exists) {
+      resp::AppendInteger(out, -2);
+    } else if (rec.expire_ms == 0) {
+      resp::AppendInteger(out, -1);
+    } else {
+      resp::AppendInteger(out, Upper(a[0]) == "PEXPIRETIME" ? rec.expire_ms : rec.expire_ms / 1000);
+    }
+  }
+
+  static void MSetNx(Server& s, Connection& c, Args& a, std::string* out) {
+    if (a.size() % 2 != 1) {
+      resp::AppendError(out, "ERR número de argumentos inválido para 'msetnx'");
+      return;
+    }
+    std::vector<std::string> keys;
+    for (size_t i = 1; i < a.size(); i += 2) keys.push_back(a[i]);
+    auto locks = s.LockKeys(keys);
+    for (const auto& k : keys) {
+      KvRecord rec;
+      if (!CheckRead(s, ReadKv(s, c, k, &rec), out)) return;
+      if (rec.exists) {
+        resp::AppendInteger(out, 0);
+        return;
+      }
+    }
+    WriteBatch batch;
+    for (size_t i = 1; i < a.size(); i += 2) WriteKv(&batch, a[i], a[i + 1], 0);
+    if (Commit(s, &batch, out)) resp::AppendInteger(out, 1);
+  }
+
+  static void Memory(Server& s, Connection& c, Args& a, std::string* out) {
+    std::string sub = Upper(a[1]);
+    if (sub != "USAGE" || a.size() < 3) {
+      resp::AppendError(out, "ERR use MEMORY USAGE chave");
+      return;
+    }
+    KvRecord rec;
+    if (!CheckRead(s, ReadKv(s, c, a[2], &rec), out)) return;
+    if (!rec.exists) {
+      resp::AppendNull(out);
+      return;
+    }
+    // chave interna (prefixo + chave + 8 bytes de sequência/tipo) + valor codificado + entrada da skip list/bloco
+    int64_t bytes = static_cast<int64_t>(1 + a[2].size() + 8 + 1 + (rec.expire_ms > 0 ? 8 : 0) + rec.value.size() + 24);
+    if (rec.expire_ms > 0) bytes += static_cast<int64_t>(1 + 8 + a[2].size() + 8);
+    resp::AppendInteger(out, bytes);
+  }
+
+  static void Checkpoints(Server& s, Connection&, Args& a, std::string* out) {
+    namespace fs = std::filesystem;
+    fs::path base = CheckpointBase(s);
+    std::error_code ec;
+    if (a.size() > 1) {
+      if (Upper(a[1]) != "DELETE" || a.size() != 3) {
+        resp::AppendError(out, "ERR use ARCA.CHECKPOINTS ou ARCA.CHECKPOINTS DELETE nome");
+        return;
+      }
+      const std::string& name = a[2];
+      bool valid = !name.empty() && name != "." && name != "..";
+      for (char ch : name) {
+        if (!(std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_' || ch == '.')) valid = false;
+      }
+      if (!valid) {
+        resp::AppendError(out, "ERR nome de checkpoint inválido");
+        return;
+      }
+      fs::path target = base / name;
+      if (!fs::is_directory(target, ec) || !fs::exists(target / "CURRENT", ec)) {
+        resp::AppendError(out, "ERR checkpoint não encontrado");
+        return;
+      }
+      fs::remove_all(target, ec);
+      if (ec) {
+        resp::AppendError(out, "ERR não foi possível apagar o checkpoint: " + ec.message());
+        return;
+      }
+      resp::AppendSimple(out, "OK");
+      return;
+    }
+    struct Item {
+      std::string name;
+      int64_t created_ms = 0;
+      uint64_t bytes = 0;
+      uint64_t files = 0;
+    };
+    std::vector<Item> items;
+    if (fs::is_directory(base, ec)) {
+      for (const auto& entry : fs::directory_iterator(base, ec)) {
+        std::error_code e2;
+        if (!entry.is_directory(e2)) continue;
+        Item item;
+        item.name = entry.path().filename().string();
+        auto ftime = fs::last_write_time(entry.path(), e2);
+        if (!e2) {
+          auto sys = std::chrono::time_point_cast<std::chrono::milliseconds>(
+              ftime - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+          item.created_ms = sys.time_since_epoch().count();
+        }
+        for (const auto& f : fs::recursive_directory_iterator(entry.path(), e2)) {
+          std::error_code e3;
+          if (!f.is_regular_file(e3)) continue;
+          ++item.files;
+          item.bytes += static_cast<uint64_t>(f.file_size(e3));
+        }
+        items.push_back(std::move(item));
+      }
+    }
+    std::sort(items.begin(), items.end(), [](const Item& x, const Item& y) {
+      return x.created_ms != y.created_ms ? x.created_ms > y.created_ms : x.name < y.name;
+    });
+    std::string j = "[";
+    for (size_t i = 0; i < items.size(); ++i) {
+      j += (i ? ",{" : "{");
+      j += "\"name\":" + JsonString(items[i].name) + ",\"created_ms\":" + std::to_string(items[i].created_ms) +
+           ",\"bytes\":" + std::to_string(items[i].bytes) + ",\"files\":" + std::to_string(items[i].files) + "}";
+    }
+    j += "]";
+    resp::AppendBulk(out, j);
+  }
+
+  static void Verify(Server& s, Connection&, Args&, std::string* out) {
+    VerifyResult r;
+    Status st = s.db_->VerifyChecksums(&r);
+    if (!st.ok()) {
+      resp::AppendError(out, "ERR " + st.ToString());
+      return;
+    }
+    std::string j = "{\"files\":" + std::to_string(r.files) + ",\"bytes\":" + std::to_string(r.bytes) +
+                    ",\"ok\":" + std::to_string(r.ok) + ",\"corrupt\":[";
+    for (size_t i = 0; i < r.corrupt.size(); ++i) {
+      j += (i ? ",{" : "{");
+      j += "\"file\":" + JsonString(r.corrupt[i].first) + ",\"error\":" + JsonString(r.corrupt[i].second) + "}";
+    }
+    j += "],\"ms\":" + JsonNumber(r.ms) + "}";
+    resp::AppendBulk(out, j);
+  }
+
   static void Exec(Server& s, Connection& c, Args& a, std::string* out);
 };
 
@@ -1041,6 +1368,19 @@ const std::unordered_map<std::string, Server::CommandSpec>& CommandTable() {
         {"ARCA.COMPACT", 1, kHeavy | kNoMulti, Commands::Compact},
         {"ARCA.CHECKPOINT", -1, kHeavy | kNoMulti, Commands::Checkpoint},
         {"ARCA.SNAPSHOT", 2, kNoMulti, Commands::Snapshot},
+        {"ARCA.CHECKPOINTS", -1, kHeavy | kNoMulti, Commands::Checkpoints},
+        {"ARCA.VERIFY", 1, kHeavy | kNoMulti, Commands::Verify},
+        {"GETEX", -2, kWrite, Commands::GetEx},
+        {"GETRANGE", 4, kRead, Commands::GetRange},
+        {"SUBSTR", 4, kRead, Commands::GetRange},
+        {"SETRANGE", 4, kWrite, Commands::SetRange},
+        {"COPY", -3, kWrite, Commands::Copy},
+        {"TOUCH", -2, kRead, Commands::Touch},
+        {"RANDOMKEY", 1, kRead, Commands::RandomKey},
+        {"EXPIRETIME", 2, kRead, Commands::ExpireTime},
+        {"PEXPIRETIME", 2, kRead, Commands::ExpireTime},
+        {"MSETNX", -3, kWrite, Commands::MSetNx},
+        {"MEMORY", -2, 0, Commands::Memory},
     };
     std::unordered_map<std::string, Server::CommandSpec> m;
     for (const auto& spec : specs) m.emplace(spec.name, spec);
@@ -1059,6 +1399,28 @@ bool ArityOk(const Server::CommandSpec& spec, size_t argc) {
   return spec.arity >= 0 ? argc == static_cast<size_t>(spec.arity) : argc >= static_cast<size_t>(-spec.arity);
 }
 
+}
+
+void Commands::Command(Server&, Connection&, Args& a, std::string* out) {
+  const auto& table = CommandTable();
+  std::string sub = a.size() > 1 ? Upper(a[1]) : "";
+  if (sub == "COUNT") {
+    resp::AppendInteger(out, static_cast<int64_t>(table.size()));
+    return;
+  }
+  if (sub == "LIST") {
+    std::vector<std::string> names;
+    for (const auto& [name, spec] : table) {
+      std::string lower = name;
+      for (auto& ch : lower) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+      names.push_back(lower);
+    }
+    std::sort(names.begin(), names.end());
+    resp::AppendArray(out, names.size());
+    for (const auto& n : names) resp::AppendBulk(out, n);
+    return;
+  }
+  resp::AppendArray(out, 0);
 }
 
 void Server::RunCommand(const CommandSpec& spec, Connection& conn, Args& args, std::string* out) {

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, errorMessage } from '../api'
 import { Badge, Button, ConfirmButton, Drawer, Empty, ErrorBox, Field, Loading, Panel } from '../components/ui'
+import { readFile } from '../csv'
 import { bytes, num, ttl } from '../format'
 import { useSession, useToast } from '../state'
-import type { KeyItem, KeyValue } from '../types'
+import type { KeyExportItem, KeyItem, KeyValue } from '../types'
 
 function prettyJSON(v: string): string | null {
   const t = v.trim()
@@ -14,6 +15,36 @@ function prettyJSON(v: string): string | null {
   } catch {
     return null
   }
+}
+
+function parseKeyFile(text: string): KeyExportItem[] {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error('O arquivo não é um JSON válido. Use um arquivo gerado por Exportar.')
+  }
+  const list = Array.isArray(data) ? data : data && typeof data === 'object' ? (data as { keys?: unknown }).keys : undefined
+  if (!Array.isArray(list)) throw new Error('Não encontrei a lista "keys" no arquivo. Use um arquivo gerado por Exportar.')
+  const out: KeyExportItem[] = []
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const it = item as { key?: unknown; value?: unknown; ttl_ms?: unknown }
+    if (typeof it.key !== 'string' || !it.key) continue
+    out.push({
+      key: it.key,
+      value: typeof it.value === 'string' ? it.value : it.value === undefined || it.value === null ? '' : JSON.stringify(it.value),
+      ttl_ms: typeof it.ttl_ms === 'number' && it.ttl_ms > 0 ? it.ttl_ms : null,
+    })
+  }
+  if (!out.length) throw new Error('O arquivo não tem nenhuma chave para importar.')
+  return out
+}
+
+interface Importing {
+  file: string
+  keys: KeyExportItem[]
+  mode: 'overwrite' | 'skip'
 }
 
 interface Editing {
@@ -38,6 +69,11 @@ export function Keys() {
   const [editing, setEditing] = useState<Editing | null>(null)
   const [saving, setSaving] = useState(false)
   const [fieldErr, setFieldErr] = useState<Record<string, string>>({})
+  const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState<Importing | null>(null)
+  const [importErr, setImportErr] = useState<string | null>(null)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
 
   const load = useCallback(async (match: string, from: string, append: boolean) => {
     setLoading(true)
@@ -134,6 +170,49 @@ export function Keys() {
     }
   }
 
+  const exportKeys = async () => {
+    setExporting(true)
+    try {
+      const name = await api.keysExport(query)
+      toast.ok(`Chaves com ${query} exportadas para ${name}.`)
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const pickFile = async (file: File | undefined) => {
+    if (!file) return
+    setImportErr(null)
+    try {
+      const keys = parseKeyFile(await readFile(file))
+      setImporting({ file: file.name, keys, mode: importing?.mode ?? 'overwrite' })
+    } catch (e) {
+      setImporting(null)
+      setImportErr(errorMessage(e))
+    }
+  }
+
+  const runImport = async () => {
+    if (!importing) return
+    setImportBusy(true)
+    try {
+      const r = await api.keysImport(importing.keys, importing.mode)
+      const parts = [`${num(r.imported)} importadas`]
+      if (r.skipped) parts.push(`${num(r.skipped)} puladas porque já existiam`)
+      if (r.failed) parts.push(`${num(r.failed)} com falha`)
+      toast.push(r.failed ? 'error' : 'ok', 'Importação concluída: ' + parts.join(', ') + '.')
+      setImporting(null)
+      setImportOpen(false)
+      load(query, '0', false)
+    } catch (e) {
+      setImportErr(errorMessage(e))
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
   const pretty = editing ? prettyJSON(editing.value) : null
 
   return (
@@ -149,8 +228,16 @@ export function Keys() {
           Use <code>*</code> para qualquer sequência e <code>?</code> para um caractere.
         </span>
         <span className="spacer" />
+        <Button icon="download" busy={exporting} onClick={exportKeys} title={`Baixa um JSON com as chaves que casam com ${query}`}>
+          Exportar
+        </Button>
         {writable ? (
-          <Button icon="plus" onClick={() => { setFieldErr({}); setEditing({ isNew: true, key: '', value: '', ttl: '' }) }}>
+          <Button icon="upload" onClick={() => { setImporting(null); setImportErr(null); setImportOpen(true) }}>
+            Importar
+          </Button>
+        ) : null}
+        {writable ? (
+          <Button icon="plus" variant="primary" onClick={() => { setFieldErr({}); setEditing({ isNew: true, key: '', value: '', ttl: '' }) }}>
             Nova chave
           </Button>
         ) : null}
@@ -197,6 +284,64 @@ export function Keys() {
           </div>
         ) : null}
       </Panel>
+
+      <Drawer
+        open={importOpen}
+        title="Importar chaves"
+        subtitle="Arquivo JSON gerado por Exportar, nesta ou em outra Arca."
+        onClose={() => setImportOpen(false)}
+        footer={
+          <>
+            <Button variant="quiet" onClick={() => setImportOpen(false)}>
+              Cancelar
+            </Button>
+            <span className="spacer" />
+            <Button variant="primary" icon="upload" busy={importBusy} disabled={!importing} onClick={runImport}>
+              {importing ? `Importar ${num(importing.keys.length)} ${importing.keys.length === 1 ? 'chave' : 'chaves'}` : 'Importar'}
+            </Button>
+          </>
+        }
+      >
+        <div className="form">
+          <Field label="Arquivo" htmlFor="kv-import-file" hint='Formato: {"keys": [{"key", "value", "ttl_ms"}]}. Até 16 MB.'>
+            <input id="kv-import-file" type="file" accept="application/json,.json" onChange={(e) => pickFile(e.target.files?.[0])} />
+          </Field>
+          {importErr ? <ErrorBox message={importErr} /> : null}
+          {importing ? (
+            <>
+              <div className="import-summary">
+                <strong>{importing.file}</strong>
+                <span>
+                  {num(importing.keys.length)} {importing.keys.length === 1 ? 'chave' : 'chaves'}, {num(importing.keys.filter((k) => k.ttl_ms).length)} com TTL
+                </span>
+                <ul className="import-preview mono">
+                  {importing.keys.slice(0, 5).map((k) => (
+                    <li key={k.key}>{k.key}</li>
+                  ))}
+                  {importing.keys.length > 5 ? <li className="muted">e mais {num(importing.keys.length - 5)}</li> : null}
+                </ul>
+              </div>
+              <fieldset className="choice">
+                <legend>Quando a chave já existir</legend>
+                <label>
+                  <input type="radio" name="kv-mode" checked={importing.mode === 'overwrite'} onChange={() => setImporting({ ...importing, mode: 'overwrite' })} />
+                  <span>
+                    <b>Sobrescrever</b>
+                    <small>O valor do arquivo substitui o atual.</small>
+                  </span>
+                </label>
+                <label>
+                  <input type="radio" name="kv-mode" checked={importing.mode === 'skip'} onChange={() => setImporting({ ...importing, mode: 'skip' })} />
+                  <span>
+                    <b>Manter a atual</b>
+                    <small>Só cria as chaves que ainda não existem.</small>
+                  </span>
+                </label>
+              </fieldset>
+            </>
+          ) : null}
+        </div>
+      </Drawer>
 
       <Drawer
         open={editing !== null}

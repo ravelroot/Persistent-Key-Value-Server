@@ -2,9 +2,19 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ApiError, api, errorMessage } from '../api'
 import { Badge, Button, ConfirmButton, Drawer, Empty, ErrorBox, Field, Loading, Panel } from '../components/ui'
+import { parseCSV, readFile } from '../csv'
 import { cell, dateTime, looksLikeTimestamp, num } from '../format'
 import { useAsync, useSession, useToast } from '../state'
-import type { Cell, Column, RowPage, Table } from '../types'
+import type { Cell, Column, RowPage, Table, TableImportResult } from '../types'
+
+interface CsvImport {
+  file: string
+  text: string
+  header: string[]
+  rows: string[][]
+  unknown: string[]
+  missing: string[]
+}
 
 type Draft = Record<string, string | boolean | null>
 
@@ -60,6 +70,12 @@ export function Tables() {
   const [fieldErr, setFieldErr] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
+  const [exporting, setExporting] = useState<'csv' | 'json' | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [csv, setCsv] = useState<CsvImport | null>(null)
+  const [csvErr, setCsvErr] = useState<string | null>(null)
+  const [csvBusy, setCsvBusy] = useState(false)
+  const [csvResult, setCsvResult] = useState<TableImportResult | null>(null)
 
   const table = useMemo(() => list.data?.find((t) => t.name === selected) ?? null, [list.data, selected])
 
@@ -112,6 +128,64 @@ export function Tables() {
   }
 
   const pkIndex = page ? page.columns.indexOf(page.primary_key) : -1
+
+  const exportTable = async (format: 'csv' | 'json') => {
+    if (!table) return
+    setExporting(format)
+    try {
+      const name = await api.tableExport(table.name, format)
+      toast.ok(`Tabela ${table.name} exportada para ${name}.`)
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setExporting(null)
+    }
+  }
+
+  const openImport = () => {
+    setCsv(null)
+    setCsvErr(null)
+    setCsvResult(null)
+    setImportOpen(true)
+  }
+
+  const pickCsv = async (file: File | undefined) => {
+    if (!file || !table) return
+    setCsvErr(null)
+    setCsvResult(null)
+    try {
+      const text = await readFile(file)
+      const all = parseCSV(text)
+      if (all.length < 2) throw new Error('O arquivo precisa de uma linha de cabeçalho com os nomes das colunas e ao menos uma linha de dados.')
+      const header = all[0].map((h) => h.trim())
+      const names = table.columns.map((c) => c.name)
+      const unknown = header.filter((h) => !names.includes(h))
+      const missing = table.columns.filter((c) => c.not_null && !c.auto_increment && c.default === null && !header.includes(c.name)).map((c) => c.name)
+      setCsv({ file: file.name, text, header, rows: all.slice(1), unknown, missing })
+    } catch (e) {
+      setCsv(null)
+      setCsvErr(errorMessage(e))
+    }
+  }
+
+  const runImport = async () => {
+    if (!table || !csv) return
+    setCsvBusy(true)
+    setCsvErr(null)
+    try {
+      const r = await api.tableImport(table.name, csv.text)
+      setCsvResult(r)
+      if (r.failed === 0) {
+        toast.ok(`${num(r.inserted)} ${r.inserted === 1 ? 'linha importada' : 'linhas importadas'} em ${table.name}.`)
+        setImportOpen(false)
+      }
+      refresh()
+    } catch (e) {
+      setCsvErr(errorMessage(e))
+    } finally {
+      setCsvBusy(false)
+    }
+  }
 
   const save = async () => {
     if (!table || !draft) return
@@ -187,6 +261,19 @@ export function Tables() {
                 <Button small icon="refresh" onClick={refresh}>
                   Atualizar
                 </Button>
+                <span className="btn-group" role="group" aria-label="Exportar tabela">
+                  <Button small icon="download" busy={exporting === 'csv'} onClick={() => exportTable('csv')}>
+                    CSV
+                  </Button>
+                  <Button small busy={exporting === 'json'} onClick={() => exportTable('json')}>
+                    JSON
+                  </Button>
+                </span>
+                {writable ? (
+                  <Button small icon="upload" onClick={openImport}>
+                    Importar CSV
+                  </Button>
+                ) : null}
                 {writable ? (
                   <Button small variant="primary" icon="plus" onClick={() => { setFieldErr({}); setDraft({ isNew: true, key: null, values: toDraft(table) }) }}>
                     Nova linha
@@ -301,6 +388,87 @@ export function Tables() {
           ) : null}
         </Panel>
       </div>
+
+      <Drawer
+        open={importOpen && table !== null}
+        title="Importar CSV"
+        subtitle={table ? <span className="mono">{table.name}</span> : undefined}
+        onClose={() => setImportOpen(false)}
+        wide
+        footer={
+          <>
+            <Button variant="quiet" onClick={() => setImportOpen(false)}>
+              {csvResult && csvResult.failed ? 'Fechar' : 'Cancelar'}
+            </Button>
+            <span className="spacer" />
+            <Button variant="primary" icon="upload" busy={csvBusy} disabled={!csv || csv.unknown.length > 0 || csv.missing.length > 0} onClick={runImport}>
+              {csv ? `Importar ${num(csv.rows.length)} ${csv.rows.length === 1 ? 'linha' : 'linhas'}` : 'Importar'}
+            </Button>
+          </>
+        }
+      >
+        {table ? (
+          <div className="form">
+            <Field label="Arquivo CSV" htmlFor="csv-file" hint="A primeira linha traz os nomes das colunas, separados por vírgula. Colunas fora do arquivo recebem o valor padrão.">
+              <input id="csv-file" type="file" accept=".csv,text/csv" onChange={(e) => pickCsv(e.target.files?.[0])} />
+            </Field>
+            {csvErr ? <ErrorBox message={csvErr} /> : null}
+            {csv && csv.unknown.length ? (
+              <ErrorBox message={`A tabela ${table.name} não tem ${csv.unknown.length === 1 ? 'a coluna' : 'as colunas'} ${csv.unknown.join(', ')}. Renomeie no cabeçalho do arquivo ou remova.`} />
+            ) : null}
+            {csv && csv.missing.length ? (
+              <ErrorBox message={`Falta ${csv.missing.length === 1 ? 'a coluna obrigatória' : 'as colunas obrigatórias'} ${csv.missing.join(', ')} no arquivo.`} />
+            ) : null}
+            {csv ? (
+              <div className="import-summary">
+                <strong>{csv.file}</strong>
+                <span>
+                  {num(csv.rows.length)} {csv.rows.length === 1 ? 'linha' : 'linhas'} · prévia das primeiras {Math.min(5, csv.rows.length)}
+                </span>
+                <div className="table-wrap import-table">
+                  <table className="grid">
+                    <thead>
+                      <tr>
+                        {csv.header.map((h) => (
+                          <th key={h} className={csv.unknown.includes(h) ? 'col-unknown' : undefined}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csv.rows.slice(0, 5).map((r, i) => (
+                        <tr key={i}>
+                          {csv.header.map((_, j) => (
+                            <td key={j} className={r[j] === undefined || r[j] === '' ? 'null' : undefined}>
+                              {r[j] === undefined || r[j] === '' ? 'NULL' : r[j]}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+            {csvResult && csvResult.failed ? (
+              <div className="import-errors" role="alert">
+                <strong>
+                  {num(csvResult.inserted)} {csvResult.inserted === 1 ? 'linha entrou' : 'linhas entraram'}, {num(csvResult.failed)} {csvResult.failed === 1 ? 'falhou' : 'falharam'}.
+                </strong>
+                <span>Corrija as linhas abaixo no arquivo e importe só elas de novo.</span>
+                <ul>
+                  {csvResult.errors.map((er) => (
+                    <li key={er.line}>
+                      <b>Linha {er.line}</b> {er.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Drawer>
 
       <Drawer
         open={draft !== null && table !== null}

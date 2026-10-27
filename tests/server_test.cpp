@@ -100,3 +100,109 @@ TEST(ServidorExigeSenha) {
   CHECK_EQ(r.Call(c, {"AUTH", "segredo"}).str, std::string("OK"));
   CHECK(r.Call(c, {"GET", "x"}).type == resp::Value::Type::kNull);
 }
+
+TEST(ServidorComandosDeStrings120) {
+  Running r;
+  resp::Client c;
+  CHECK_OK(c.Connect("127.0.0.1", r.port));
+  using T = resp::Value::Type;
+  r.Call(c, {"SET", "s", "Hello World"});
+  CHECK_EQ(r.Call(c, {"GETRANGE", "s", "0", "4"}).str, std::string("Hello"));
+  CHECK_EQ(r.Call(c, {"GETRANGE", "s", "-5", "-1"}).str, std::string("World"));
+  CHECK_EQ(r.Call(c, {"GETRANGE", "s", "5", "1"}).str, std::string(""));
+  CHECK_EQ(r.Call(c, {"GETRANGE", "nada", "0", "-1"}).str, std::string(""));
+  CHECK(r.Call(c, {"GETRANGE", "s", "a", "1"}).type == T::kError);
+  CHECK_EQ(r.Call(c, {"SETRANGE", "s", "6", "Redis"}).integer, int64_t(11));
+  CHECK_EQ(r.Call(c, {"GET", "s"}).str, std::string("Hello Redis"));
+  CHECK_EQ(r.Call(c, {"SETRANGE", "pad", "3", "x"}).integer, int64_t(4));
+  CHECK_EQ(r.Call(c, {"GET", "pad"}).str, std::string("\0\0\0x", 4));
+  CHECK_EQ(r.Call(c, {"SETRANGE", "vazia", "0", ""}).integer, int64_t(0));
+  CHECK_EQ(r.Call(c, {"EXISTS", "vazia"}).integer, int64_t(0));
+  CHECK(r.Call(c, {"SETRANGE", "s", "-1", "x"}).type == T::kError);
+
+  CHECK_EQ(r.Call(c, {"MSETNX", "m1", "a", "m2", "b"}).integer, int64_t(1));
+  CHECK_EQ(r.Call(c, {"MSETNX", "m2", "z", "m3", "c"}).integer, int64_t(0));
+  CHECK(r.Call(c, {"GET", "m3"}).type == T::kNull);
+  CHECK_EQ(r.Call(c, {"GET", "m2"}).str, std::string("b"));
+  CHECK(r.Call(c, {"MSETNX", "m4", "a", "m5"}).type == T::kError);
+
+  CHECK_EQ(r.Call(c, {"TOUCH", "m1", "m2", "nada"}).integer, int64_t(2));
+  CHECK(r.Call(c, {"MEMORY", "USAGE", "m1"}).integer > 0);
+  CHECK(r.Call(c, {"MEMORY", "USAGE", "nada"}).type == T::kNull);
+  CHECK(r.Call(c, {"MEMORY", "DOCTOR"}).type == T::kError);
+  CHECK(r.Call(c, {"COMMAND", "COUNT"}).integer > 60);
+}
+
+TEST(ServidorExpiracaoECopia120) {
+  Running r;
+  resp::Client c;
+  CHECK_OK(c.Connect("127.0.0.1", r.port));
+  using T = resp::Value::Type;
+  r.Call(c, {"SET", "k", "v"});
+  CHECK_EQ(r.Call(c, {"EXPIRETIME", "k"}).integer, int64_t(-1));
+  CHECK_EQ(r.Call(c, {"EXPIRETIME", "nada"}).integer, int64_t(-2));
+  CHECK_EQ(r.Call(c, {"GETEX", "k", "EX", "100"}).str, std::string("v"));
+  int64_t pt = r.Call(c, {"PEXPIRETIME", "k"}).integer;
+  int64_t et = r.Call(c, {"EXPIRETIME", "k"}).integer;
+  CHECK(pt > 0);
+  CHECK_EQ(et, pt / 1000);
+  CHECK(r.Call(c, {"TTL", "k"}).integer > 90);
+  CHECK_EQ(r.Call(c, {"GETEX", "k", "PERSIST"}).str, std::string("v"));
+  CHECK_EQ(r.Call(c, {"TTL", "k"}).integer, int64_t(-1));
+  CHECK_EQ(r.Call(c, {"GETEX", "k"}).str, std::string("v"));
+  CHECK(r.Call(c, {"GETEX", "nada", "EX", "5"}).type == T::kNull);
+  CHECK(r.Call(c, {"GETEX", "k", "EX", "0"}).type == T::kError);
+  CHECK(r.Call(c, {"GETEX", "k", "EX", "5", "PERSIST"}).type == T::kError);
+  CHECK(r.Call(c, {"GETEX", "k", "XYZ"}).type == T::kError);
+  CHECK_EQ(r.Call(c, {"GETEX", "k", "PXAT", "1"}).str, std::string("v"));
+  CHECK(r.Call(c, {"GET", "k"}).type == T::kNull);
+
+  r.Call(c, {"SET", "orig", "1", "EX", "500"});
+  r.Call(c, {"SET", "dest", "2"});
+  CHECK_EQ(r.Call(c, {"COPY", "orig", "dest"}).integer, int64_t(0));
+  CHECK_EQ(r.Call(c, {"GET", "dest"}).str, std::string("2"));
+  CHECK_EQ(r.Call(c, {"COPY", "orig", "dest", "REPLACE"}).integer, int64_t(1));
+  CHECK_EQ(r.Call(c, {"GET", "dest"}).str, std::string("1"));
+  CHECK(r.Call(c, {"TTL", "dest"}).integer > 400);
+  CHECK_EQ(r.Call(c, {"COPY", "orig", "novo"}).integer, int64_t(1));
+  CHECK_EQ(r.Call(c, {"COPY", "nada", "outro"}).integer, int64_t(0));
+  CHECK(r.Call(c, {"COPY", "orig", "orig"}).type == T::kError);
+  CHECK(r.Call(c, {"COPY", "orig", "x", "DB", "1"}).type == T::kError);
+  CHECK(r.Call(c, {"COPY", "orig", "x", "OUTRA"}).type == T::kError);
+
+  auto rk = r.Call(c, {"RANDOMKEY"});
+  CHECK(rk.type == T::kBulk);
+  CHECK(r.Call(c, {"EXISTS", rk.str}).integer == 1);
+  r.Call(c, {"FLUSHDB"});
+  CHECK(r.Call(c, {"RANDOMKEY"}).type == T::kNull);
+}
+
+TEST(ServidorCheckpointsEVerificacao) {
+  Running r;
+  resp::Client c;
+  CHECK_OK(c.Connect("127.0.0.1", r.port));
+  using T = resp::Value::Type;
+  for (int i = 0; i < 500; ++i) r.Call(c, {"SET", "v" + std::to_string(i), std::string(64, 'x')});
+  CHECK_EQ(r.Call(c, {"ARCA.FLUSH"}).str, std::string("OK"));
+  auto verify = r.Call(c, {"ARCA.VERIFY"});
+  CHECK(verify.type == T::kBulk);
+  CHECK(verify.str.find("\"corrupt\":[]") != std::string::npos);
+  CHECK(verify.str.find("\"files\":0") == std::string::npos);
+
+  std::string name = "teste-" + std::to_string(r.port) + "-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000);
+  CHECK(r.Call(c, {"ARCA.CHECKPOINT", name}).type == T::kBulk);
+  auto list = r.Call(c, {"ARCA.CHECKPOINTS"});
+  CHECK(list.type == T::kBulk);
+  CHECK(list.str.find("\"name\":\"" + name + "\"") != std::string::npos);
+  CHECK(list.str.find("\"files\":") != std::string::npos);
+  CHECK(r.Call(c, {"ARCA.CHECKPOINTS", "DELETE", "../dados"}).type == T::kError);
+  CHECK(r.Call(c, {"ARCA.CHECKPOINTS", "DELETE", ".."}).type == T::kError);
+  CHECK(r.Call(c, {"ARCA.CHECKPOINTS", "DELETE", "a/b"}).type == T::kError);
+  CHECK(r.Call(c, {"ARCA.CHECKPOINTS", "DELETE", "nao-existe-" + name}).type == T::kError);
+  CHECK(r.Call(c, {"ARCA.CHECKPOINTS", "OUTRO", name}).type == T::kError);
+  CHECK_EQ(r.Call(c, {"ARCA.CHECKPOINTS", "DELETE", name}).str, std::string("OK"));
+  CHECK(r.Call(c, {"ARCA.CHECKPOINTS"}).str.find("\"name\":\"" + name + "\"") == std::string::npos);
+  CHECK(r.Call(c, {"MULTI"}).str == "OK");
+  CHECK(r.Call(c, {"ARCA.VERIFY"}).type == T::kError);
+  r.Call(c, {"DISCARD"});
+}

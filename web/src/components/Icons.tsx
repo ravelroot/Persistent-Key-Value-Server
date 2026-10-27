@@ -27,6 +27,18 @@ export type IconName =
   | 'lock'
   | 'copy'
   | 'download'
+  | 'plug'
+  | 'upload'
+  | 'webhook'
+  | 'token'
+  | 'command'
+  | 'check'
+  | 'bookmark'
+  | 'history'
+  | 'shield'
+  | 'external'
+  | 'gauge'
+  | 'code'
 
 const paths: Record<IconName, ReactNode> = {
   overview: (
@@ -173,6 +185,74 @@ const paths: Record<IconName, ReactNode> = {
   download: (
     <>
       <path d="M12 4v11M7 10l5 5 5-5M4 20h16" />
+    </>
+  ),
+  plug: (
+    <>
+      <path d="M9 3v4M15 3v4M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0V7zM12 16v5" />
+    </>
+  ),
+  upload: (
+    <>
+      <path d="M12 16V5M7 10l5-5 5 5M4 20h16" />
+    </>
+  ),
+  webhook: (
+    <>
+      <circle cx="6" cy="17" r="2.5" />
+      <circle cx="18" cy="17" r="2.5" />
+      <circle cx="12" cy="6" r="2.5" />
+      <path d="M10.8 8.2L7.2 14.8M8.5 17h7M13.2 8.2l3.6 6.6" />
+    </>
+  ),
+  token: (
+    <>
+      <rect x="3" y="7" width="18" height="10" rx="1.5" />
+      <path d="M7 12h.01M10.5 12h.01M14 12h3" />
+    </>
+  ),
+  command: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="1.5" />
+      <path d="M7 15l3-3-3-3M12 15h5" />
+    </>
+  ),
+  check: (
+    <>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </>
+  ),
+  bookmark: (
+    <>
+      <path d="M6.5 4h11v16.5L12 16l-5.5 4.5z" />
+    </>
+  ),
+  history: (
+    <>
+      <path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4.5h4.5" />
+      <path d="M12 8v4.5l3 1.8" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6z" />
+      <path d="M8.5 12l2.5 2.5 4.5-5" />
+    </>
+  ),
+  external: (
+    <>
+      <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </>
+  ),
+  gauge: (
+    <>
+      <path d="M3.5 16a8.5 8.5 0 1 1 17 0" />
+      <path d="M12 16l4-5M3.5 16h2M18.5 16h2M12 7.5v2" />
+    </>
+  ),
+  code: (
+    <>
+      <path d="M8.5 7L3.5 12l5 5M15.5 7l5 5-5 5M13.5 4.5l-3 15" />
     </>
   ),
 }

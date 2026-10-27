@@ -54,6 +54,8 @@ type fakeArca struct {
 	commands int64
 	calls    map[string]int
 	down     bool
+
+	checkpoints map[string]int64
 }
 
 func newFakeArca(t *testing.T, password string) *fakeArca {
@@ -67,6 +69,8 @@ func newFakeArca(t *testing.T, password string) *fakeArca {
 		tables: map[string]*fakeTable{},
 		config: map[string]string{"appendfsync": "everysec", "maxclients": "10000", "requirepass": password, "slowlog-log-slower-than": "10000"},
 		calls:  map[string]int{},
+
+		checkpoints: map[string]int64{},
 	}
 	go f.serve()
 	t.Cleanup(func() { ln.Close() })
@@ -156,17 +160,61 @@ func (f *fakeArca) exec(args []string) resp.Value {
 		return bulk(e.value)
 	case "SET":
 		e := fakeEntry{value: args[2]}
-		for i := 3; i+1 < len(args); i += 2 {
-			n, _ := strconv.ParseInt(args[i+1], 10, 64)
+		nx, xx := false, false
+		for i := 3; i < len(args); i++ {
 			switch strings.ToUpper(args[i]) {
-			case "EX":
-				e.expire = time.Now().Add(time.Duration(n) * time.Second)
-			case "PX":
-				e.expire = time.Now().Add(time.Duration(n) * time.Millisecond)
+			case "NX":
+				nx = true
+			case "XX":
+				xx = true
+			case "EX", "PX":
+				if i+1 < len(args) {
+					n, _ := strconv.ParseInt(args[i+1], 10, 64)
+					unit := time.Second
+					if strings.ToUpper(args[i]) == "PX" {
+						unit = time.Millisecond
+					}
+					e.expire = time.Now().Add(time.Duration(n) * unit)
+					i++
+				}
 			}
+		}
+		_, exists := f.live(args[1])
+		if (nx && exists) || (xx && !exists) {
+			return nullv()
 		}
 		f.kv[args[1]] = e
 		return okv()
+	case "MGET":
+		out := make([]resp.Value, 0, len(args)-1)
+		for _, k := range args[1:] {
+			if e, ok := f.live(k); ok {
+				out = append(out, bulk(e.value))
+			} else {
+				out = append(out, nullv())
+			}
+		}
+		return arrv(out...)
+	case "ARCA.CHECKPOINTS":
+		if len(args) == 3 && strings.ToUpper(args[1]) == "DELETE" {
+			if _, ok := f.checkpoints[args[2]]; !ok {
+				return errv("checkpoint '" + args[2] + "' não existe")
+			}
+			delete(f.checkpoints, args[2])
+			return okv()
+		}
+		names := make([]string, 0, len(f.checkpoints))
+		for n := range f.checkpoints {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		out := []map[string]any{}
+		for _, n := range names {
+			out = append(out, map[string]any{"name": n, "created_ms": f.checkpoints[n], "bytes": 4096, "files": 3})
+		}
+		return jsonv(out)
+	case "ARCA.VERIFY":
+		return jsonv(map[string]any{"files": 9, "bytes": 3145728, "ok": 9, "corrupt": []any{}, "ms": 4.2})
 	case "DEL":
 		var n int64
 		for _, k := range args[1:] {
@@ -219,6 +267,7 @@ func (f *fakeArca) exec(args []string) resp.Value {
 	case "ARCA.COMPACT":
 		return okv()
 	case "ARCA.CHECKPOINT":
+		f.checkpoints[args[len(args)-1]] = time.Now().UnixMilli()
 		return bulk("/dados/checkpoints/" + args[len(args)-1])
 	case "CLIENT":
 		return bulk("id=1 addr=127.0.0.1:50000 name=painel age=10 idle=0 cmd=client\nid=2 addr=127.0.0.1:50001 name= age=3 idle=2 cmd=get\n")

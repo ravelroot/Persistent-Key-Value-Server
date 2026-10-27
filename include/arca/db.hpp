@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "arca/iterator.hpp"
@@ -13,7 +14,7 @@
 
 namespace arca {
 
-inline constexpr const char* kVersion = "1.1.0";
+inline constexpr const char* kVersion = "1.2.0";
 
 class Snapshot {
  public:
@@ -81,6 +82,14 @@ struct EngineStats {
   std::vector<CompactionRecord> recent_compactions;
 };
 
+struct VerifyResult {
+  uint64_t files = 0;
+  uint64_t bytes = 0;
+  uint64_t ok = 0;
+  std::vector<std::pair<std::string, std::string>> corrupt;
+  double ms = 0;
+};
+
 class DB {
  public:
   static Status Open(const Options& options, const std::string& path, std::unique_ptr<DB>* db);
@@ -103,6 +112,7 @@ class DB {
   virtual void SetSyncMode(SyncMode mode) = 0;
   virtual SyncMode GetSyncMode() const = 0;
   virtual EngineStats GetStats() = 0;
+  virtual Status VerifyChecksums(VerifyResult* result) = 0;
 };
 
 Status DestroyDB(const std::string& path);

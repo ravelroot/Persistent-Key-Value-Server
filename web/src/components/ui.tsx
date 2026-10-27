@@ -158,10 +158,10 @@ export function ConfirmButton({ label, confirmLabel = 'Confirmar', onConfirm, ic
 
 export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'ok' | 'warn' | 'error' }) {
   return (
-    <div className={`stat${tone ? ' stat-' + tone : ''}`}>
-      <span className="stat-label">{label}</span>
-      <span className="stat-value">{value}</span>
-      {hint ? <span className="stat-hint">{hint}</span> : null}
+    <div className={`readout${tone ? ' readout-' + tone : ''}`}>
+      <span className="readout-label">{label}</span>
+      <span className="readout-value">{value}</span>
+      {hint ? <span className="readout-hint">{hint}</span> : null}
     </div>
   )
 }

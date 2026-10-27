@@ -10,18 +10,28 @@
 </p>
 
 <p align="center">
-  C++20 · CMake · biblioteca padrão (&lt;thread&gt;, &lt;mutex&gt;, &lt;shared_mutex&gt;, &lt;atomic&gt;) · epoll / poll · RESP2 · Go 1.24 · React 18 · TypeScript · Vite · Docker Compose
+  C++20 · CMake · biblioteca padrão (&lt;thread&gt;, &lt;mutex&gt;, &lt;shared_mutex&gt;, &lt;atomic&gt;) · epoll / poll · RESP2 · Go 1.24 · React 18 · TypeScript · Vite · Prometheus · Webhooks · Docker Compose
 </p>
 
 ---
 
-> **Manual completo:** [`Manual-Arca.pdf`](Manual-Arca.pdf) explica a instalação, o servidor, os comandos, o SQL, o painel, a API, a configuração, a operação e a solução de problemas, passo a passo (cópia em [`docs/`](docs/Manual-Arca.pdf)).
+> **Manual completo:** [`Manual-Arca.pdf`](Manual-Arca.pdf) explica a instalação, o servidor, os comandos, o SQL, o painel, as integrações (chaves de acesso, webhooks e Prometheus), a API, a configuração, a operação e a solução de problemas, passo a passo (cópia em [`docs/`](docs/Manual-Arca.pdf)).
 
-> **Banco de dados:** [`Banco-de-Dados-Arca.pdf`](Banco-de-Dados-Arca.pdf) descreve a arquitetura de armazenamento que a aplicação segue: LSM-Tree, formato do WAL, das SSTables e do MANIFEST, codificação das chaves e das linhas, compactação e recuperação.
+> **Banco de dados:** [`Banco-de-Dados-Arca.pdf`](Banco-de-Dados-Arca.pdf) descreve a arquitetura de armazenamento que a aplicação segue: LSM-Tree, formato do WAL, das SSTables e do MANIFEST, codificação das chaves e das linhas, compactação, checkpoints, verificação de integridade e recuperação.
 
 <p align="center">
-  <img src="docs/images/tela-visao-geral.png" alt="Visão geral: as operações por segundo na tampa escura e os indicadores nos compartimentos da caixa">
+  <img src="docs/images/tela-visao-geral.png" alt="Visão geral: a coluna de estratos com a memtable em âmbar e os níveis L0 a L6 em verde-pátina, ao lado do tráfego por segundo">
 </p>
+
+## Novidades da 1.2.0
+
+- **Visual novo, "estratos e pátina":** o painel ganhou identidade própria. A visão geral abre com a coluna de estratos, que mostra a memtable (memória, em âmbar) por cima dos níveis L0 a L6 (disco, em verde-pátina) com espessura proporcional ao tamanho; quando há compactação, as faixas mostram os dados descendo. Barra de status fixa no rodapé, tema escuro revisto e textos reescritos para dizer o que cada coisa faz.
+- **Paleta de comandos e atalhos:** `Ctrl K` (ou `⌘ K`) procura qualquer tela ou ação (gravar a memtable, compactar, criar checkpoint, trocar o tema). `g` + letra navega sem tirar a mão do teclado e `?` mostra a lista.
+- **Integrações:** tela nova com exemplos prontos para conectar por redis-cli, Python, Node.js, Go, Java e pela API REST; **chaves de acesso** (tokens de API com papel e validade); **webhooks** assinados com HMAC-SHA256 para gravações, compactações, checkpoints, logins e mudanças de configuração; e **métricas para o Prometheus** em `/metrics`.
+- **Importar e exportar:** chaves em JSON (com TTL) e tabelas em CSV ou JSON, pelo painel ou pela API, com prévia antes de gravar e erros apontados por linha.
+- **Console SQL:** consultas salvas no servidor (pessoais ou compartilhadas com a equipe), histórico local e exportação do resultado em CSV.
+- **Checkpoints e integridade:** lista dos checkpoints com tamanho e data, exclusão pelo painel, e `ARCA.VERIFY`, que relê todas as SSTables vivas e confere o CRC32C de cada bloco sem parar o servidor.
+- **Comandos novos no servidor:** `GETEX`, `GETRANGE`, `SETRANGE`, `COPY`, `TOUCH`, `RANDOMKEY`, `EXPIRETIME`, `PEXPIRETIME`, `MSETNX`, `MEMORY USAGE`, `ARCA.CHECKPOINTS` e `ARCA.VERIFY`.
 
 ## O que a Arca faz
 
@@ -34,7 +44,8 @@
 - **Compatível com o Redis:** fala RESP2, então `redis-cli` e bibliotecas de Redis funcionam. Strings, TTL, contadores, `SCAN`, `MULTI/EXEC`, `INFO`, `SLOWLOG`, `CLIENT LIST`.
 - **Tabelas com SQL:** `CREATE TABLE`, índices secundários, `INSERT`, `SELECT` com `WHERE`, `GROUP BY`, `ORDER BY`, agregações e `EXPLAIN`, `UPDATE`, `DELETE`, `ALTER TABLE ADD COLUMN`, tudo gravado na mesma LSM-Tree.
 - **Painel web e API:** gateway em Go com API REST, eventos em tempo real (SSE), papéis e auditoria; painel em React para ver níveis, SSTables, chaves, tabelas e rodar SQL.
-- **Identidade "caixa única":** o painel segue a identidade visual do [Bento](https://github.com/ravelroot/Data-Driven-Admin-Panel). Menu, cabeçalho e títulos ficam impressos no fundo, sem bordas; na visão geral, os blocos dividem paredes finas dentro de uma única caixa, e o bloco principal, com as operações por segundo, é o único escuro. Paleta `#FFFFFF` · `#4D4B4B` · `#000000` · `#333232` · `#BAB7B6`, títulos e números em Bricolage Grotesque fina e condensada, textos em Instrument Sans e código em IBM Plex Mono. Cor só onde informa: status como um ponto de cor e os níveis da LSM-Tree do cinza claro (L0) ao preto (L6).
+- **Integrações:** chaves de acesso para scripts e serviços, webhooks assinados, métricas no formato do Prometheus, importação e exportação em JSON e CSV, e o esquema OpenAPI da API.
+- **Identidade "estratos e pátina":** a Arca guarda dados que descem em camadas, então o painel desenha isso. Disco é frio (verde-pátina, do cobre oxidado de um baú antigo, de `#CFE4DD` no L0 a `#103F37` no L6) e memória é quente (âmbar `#C98B1E`, com hachura enquanto o dado ainda não virou arquivo). Fundo `#F2F3EF`, tinta `#14211E`, destaque `#1E6F62`. Tudo em Archivo, com o eixo de largura condensado nos títulos e números; código, chaves e SQL em IBM Plex Mono. Cor só onde informa: estado da conexão, níveis da LSM-Tree e o que está em memória.
 - **Ferramentas:** `arca-cli` (console com SQL), `arca-bench` (carga), `arca-inspect` (abre SST, WAL e MANIFEST) e uma biblioteca para embutir o motor no seu programa.
 
 ## Arquitetura
@@ -42,7 +53,9 @@
 ```mermaid
 flowchart LR
     CLI["redis-cli · arca-cli<br/>bibliotecas Redis"] -- "RESP2 / TCP 7379" --> NET
-    UI["Navegador"] -- "HTTP + SSE" --> GW["Gateway Go<br/>API REST · papéis · auditoria"]
+    UI["Navegador"] -- "HTTP + SSE" --> GW["Gateway Go<br/>API REST · papéis · auditoria<br/>tokens · webhooks · /metrics"]
+    PROM["Prometheus"] -- "GET /metrics" --> GW
+    GW -- "POST assinado" --> HOOK["Seus serviços<br/>(webhooks)"]
     GW -- "RESP2 com pool" --> NET
     subgraph SRV["arca-server (C++20)"]
         NET["Laços de eventos<br/>epoll · poll · WSAPoll"] --> CMD["Comandos<br/>chave-valor · MULTI · SQL"]
@@ -61,7 +74,7 @@ flowchart LR
 | Processo | Comando | Responsabilidade |
 |---|---|---|
 | Servidor | `arca-server` | Rede, comandos, SQL, expiração de chaves e o motor LSM com as threads de compactação e de sincronização do WAL |
-| Gateway | `arca-gateway` | API REST, sessões, papéis, auditoria, métricas por SSE e entrega do painel |
+| Gateway | `arca-gateway` | API REST, sessões, chaves de acesso, papéis, auditoria, webhooks, métricas por SSE e para o Prometheus, e entrega do painel |
 | Painel | `web/` | Interface em React servida pelo gateway |
 
 ### Caminho de uma escrita
@@ -78,7 +91,7 @@ flowchart LR
 Memtable atual → memtable imutável → SSTables do L0 da mais nova para a mais antiga → um arquivo por nível a partir do L1 (busca binária pelo intervalo de chaves). Em cada SSTable o filtro de Bloom evita a leitura do disco quando a chave não está lá, e o cache de blocos guarda os blocos mais usados.
 
 <p align="center">
-  <img src="docs/images/tela-armazenamento.png" alt="Níveis da LSM-Tree com cada SSTable e as compactações recentes">
+  <img src="docs/images/tela-armazenamento.png" alt="Níveis da LSM-Tree com cada SSTable, checkpoints e verificação de integridade">
 </p>
 
 ## Como rodar
@@ -99,6 +112,7 @@ Na primeira vez o script cria o arquivo `.env` com uma senha aleatória para o s
 |---|---|
 | http://localhost:8080 | Painel |
 | http://localhost:8080/api/openapi.json | Esquema OpenAPI da API |
+| http://localhost:8080/metrics | Métricas no formato do Prometheus (com chave de acesso) |
 | localhost:7379 | Servidor Arca (RESP2), com a senha do `.env` |
 
 Para rodar sem o script:
@@ -160,18 +174,35 @@ Por outros clientes, mande o SQL como argumento: `SQL "SELECT ..."` (resposta em
 | Grupo | Comandos |
 |---|---|
 | Conexão | `PING` · `ECHO` · `AUTH` · `HELLO` · `SELECT 0` · `QUIT` · `CLIENT ID/SETNAME/GETNAME/LIST` |
-| Strings | `GET` · `SET` (`EX` `PX` `EXAT` `PXAT` `NX` `XX` `GET` `KEEPTTL`) · `SETNX` · `SETEX` · `PSETEX` · `GETSET` · `GETDEL` · `MGET` · `MSET` · `APPEND` · `STRLEN` · `INCR` · `DECR` · `INCRBY` · `DECRBY` · `INCRBYFLOAT` |
-| Chaves | `DEL` · `UNLINK` · `EXISTS` · `TYPE` · `RENAME` · `RENAMENX` · `EXPIRE` · `PEXPIRE` · `EXPIREAT` · `PEXPIREAT` · `TTL` · `PTTL` · `PERSIST` · `SCAN` · `KEYS` · `DBSIZE` · `FLUSHDB` |
+| Strings | `GET` · `SET` (`EX` `PX` `EXAT` `PXAT` `NX` `XX` `GET` `KEEPTTL`) · `SETNX` · `SETEX` · `PSETEX` · `GETSET` · `GETDEL` · `GETEX` · `GETRANGE` · `SETRANGE` · `MGET` · `MSET` · `MSETNX` · `APPEND` · `STRLEN` · `INCR` · `DECR` · `INCRBY` · `DECRBY` · `INCRBYFLOAT` |
+| Chaves | `DEL` · `UNLINK` · `EXISTS` · `TYPE` · `COPY` · `TOUCH` · `RANDOMKEY` · `RENAME` · `RENAMENX` · `EXPIRE` · `PEXPIRE` · `EXPIREAT` · `PEXPIREAT` · `EXPIRETIME` · `PEXPIRETIME` · `TTL` · `PTTL` · `PERSIST` · `MEMORY USAGE` · `SCAN` · `KEYS` · `DBSIZE` · `FLUSHDB` |
 | Transações | `MULTI` · `EXEC` · `DISCARD` |
 | SQL | `SQL` · `SQL.JSON` · `SQL.TABLES` |
 | Servidor | `INFO` · `CONFIG GET/SET` · `SLOWLOG GET/LEN/RESET` · `SAVE` · `BGSAVE` · `LASTSAVE` · `TIME` · `SHUTDOWN` |
-| Arca | `ARCA.STATS` (JSON) · `ARCA.FLUSH` · `ARCA.COMPACT` · `ARCA.CHECKPOINT [nome]` · `ARCA.SNAPSHOT BEGIN/END` · `ARCA.SCANJSON` |
+| Arca | `ARCA.STATS` (JSON) · `ARCA.FLUSH` · `ARCA.COMPACT` · `ARCA.CHECKPOINT [nome]` · `ARCA.CHECKPOINTS [DELETE nome]` · `ARCA.VERIFY` · `ARCA.SNAPSHOT BEGIN/END` · `ARCA.SCANJSON` |
+
+```bash
+redis-cli -p 7379 -a "$ARCA_PASSWORD" GETEX sessao:42 EX 7200          # lê e renova o TTL
+redis-cli -p 7379 -a "$ARCA_PASSWORD" COPY produto:1 produto:1:rascunho  # copia valor e TTL
+redis-cli -p 7379 -a "$ARCA_PASSWORD" ARCA.VERIFY                        # confere o CRC32C de todas as SSTables
+```
+
+## O painel
 
 | Tela | |
 |---|---|
-| <img src="docs/images/tela-sql.png" alt="Console SQL com agrupamento e plano"> | <img src="docs/images/tela-tabelas.png" alt="Grade de linhas de uma tabela"> |
-| <img src="docs/images/tela-chaves.png" alt="Chaves com TTL e tamanho"> | <img src="docs/images/tela-clientes.png" alt="Clientes conectados e comandos lentos"> |
+| <img src="docs/images/tela-integracoes.png" alt="Integrações com exemplos de código por linguagem"> | <img src="docs/images/tela-paleta.png" alt="Paleta de comandos aberta com Ctrl K"> |
+| <img src="docs/images/tela-sql.png" alt="Console SQL com consultas salvas e plano"> | <img src="docs/images/tela-tabelas.png" alt="Grade de linhas de uma tabela com importar e exportar"> |
+| <img src="docs/images/tela-chaves.png" alt="Chaves com TTL, importar e exportar"> | <img src="docs/images/tela-clientes.png" alt="Clientes conectados e comandos lentos"> |
 | <img src="docs/images/tela-usuarios.png" alt="Usuários e auditoria"> | <img src="docs/images/tela-escuro.png" alt="Painel no tema escuro"> |
+
+| Atalho | O que faz |
+|---|---|
+| `Ctrl K` ou `⌘ K` | Abre a paleta: procure uma tela ou uma ação pelo nome |
+| `g` e depois `v` `a` `l` `c` `t` `s` `i` | Visão geral, Armazenamento, Clientes, Chaves, Tabelas, Console SQL, Integrações |
+| `g` e depois `m` `f` `u` `p` | Comandos, Configuração, Usuários, Minha conta |
+| `Ctrl Enter` | Executa no Console SQL e em Comandos |
+| `?` | Mostra todos os atalhos |
 
 ## Linha de comando
 
@@ -188,15 +219,16 @@ arca-inspect check dados                                  # confere o checksum d
 
 ## API
 
-Todas as rotas ficam em `/api`, respondem JSON e exigem `Authorization: Bearer <token>`, exceto login, saúde e o esquema OpenAPI. Erros sempre no mesmo formato: `{ "code": "...", "message": "...", "fields": { "campo": "mensagem" } }`.
+Todas as rotas ficam em `/api`, respondem JSON e exigem `Authorization: Bearer <token>`, exceto login, saúde e o esquema OpenAPI. O token pode ser o de uma sessão (login) ou uma **chave de acesso** criada em Integrações (`arca_…`), que leva o papel escolhido e pode ter validade. Erros sempre no mesmo formato: `{ "code": "...", "message": "...", "fields": { "campo": "mensagem" } }`.
 
 | Grupo | Rotas principais |
 |---|---|
 | Acesso | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `PUT /auth/me/password` |
 | Monitoramento | `GET /overview` · `GET /events` (SSE) · `GET /storage` · `GET /clients` · `GET /slowlog` · `GET /health` |
-| Chaves | `GET /keys` · `GET`, `PUT` e `DELETE /keys/value` · `POST /keys/expire` |
-| Tabelas e SQL | `GET /tables` · `GET`, `POST`, `PUT` e `DELETE /tables/{nome}/rows` · `POST /sql` |
-| Operação | `POST /storage/flush` · `POST /storage/compact` · `POST /storage/checkpoint` |
+| Chaves | `GET /keys` · `GET`, `PUT` e `DELETE /keys/value` · `POST /keys/expire` · `GET /keys/export` · `POST /keys/import` |
+| Tabelas e SQL | `GET /tables` · `GET`, `POST`, `PUT` e `DELETE /tables/{nome}/rows` · `GET /tables/{nome}/export` · `POST /tables/{nome}/import` · `POST /sql` · `GET`, `POST` e `DELETE /queries` |
+| Operação | `POST /storage/flush` · `POST /storage/compact` · `POST /storage/checkpoint` · `GET` e `DELETE /storage/checkpoints` · `POST /storage/verify` |
+| Integração | `GET /integrations` · `GET`, `POST` e `DELETE /tokens` · `GET`, `POST`, `PATCH` e `DELETE /webhooks` · `POST /webhooks/{id}/test` · `GET /webhooks/{id}/deliveries` · `GET /metrics` (fora de `/api`) |
 | Administração | `POST /command` · `GET` e `PUT /config` · `GET`, `POST`, `PATCH` e `DELETE /users` · `GET /audit` |
 
 ```bash
@@ -205,6 +237,45 @@ TOKEN=$(curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: applicat
 
 curl -s -X POST localhost:8080/api/sql -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"query":"SELECT * FROM produtos ORDER BY preco DESC LIMIT 5"}'
+
+curl -s localhost:8080/api/tables/produtos/export?format=csv -H "Authorization: Bearer $TOKEN" -o produtos.csv
+```
+
+## Integrações
+
+A tela **Integrações** junta tudo o que liga a Arca a outros sistemas.
+
+| | |
+|---|---|
+| <img src="docs/images/tela-webhooks.png" alt="Webhooks com estado da última entrega e exemplo de verificação da assinatura"> | <img src="docs/images/tela-chaves-de-acesso.png" alt="Chaves de acesso com papel, último uso e validade"> |
+
+| Recurso | Como usar |
+|---|---|
+| Conectar | Exemplos prontos para redis-cli, Python (redis-py), Node.js (ioredis), Go (go-redis), Java (Jedis) e curl, já com o endereço do seu servidor. Defina `ARCA_PUBLIC_ADDR` no gateway para mostrar o endereço que as aplicações enxergam |
+| Chaves de acesso | Tokens `arca_…` para scripts, CI e serviços. Cada chave tem nome, papel (no máximo o seu) e validade opcional; aparece uma única vez e o gateway guarda só o SHA-256. Revogar corta o acesso na hora |
+| Webhooks | O gateway faz `POST` no seu endereço quando algo acontece: `key.write`, `key.delete`, `table.write`, `sql.write`, `storage.flush`, `storage.compact`, `storage.checkpoint`, `config.change`, `user.change` e `auth.login`. Entrega assíncrona, duas tentativas, histórico das últimas entregas e botão de teste |
+| Prometheus | `GET /metrics` no formato de exposição de texto, protegido por chave de acesso: operações por segundo, clientes, memtable, bytes e arquivos por nível, compactações, amplificação de escrita, cache de blocos, acertos no keyspace e requisições do gateway |
+
+Cada webhook leva os cabeçalhos `X-Arca-Event`, `X-Arca-Delivery` e `X-Arca-Signature: sha256=<hex>`, o HMAC-SHA256 do corpo com o segredo mostrado na criação. Para conferir em Python:
+
+```python
+import hashlib, hmac
+
+def assinatura_valida(corpo: bytes, cabecalho: str, segredo: str) -> bool:
+    esperado = "sha256=" + hmac.new(segredo.encode(), corpo, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(esperado, cabecalho)
+```
+
+Trecho para o `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: arca
+    metrics_path: /metrics
+    authorization:
+      credentials: arca_sua_chave_de_acesso
+    static_configs:
+      - targets: ["localhost:8080"]
 ```
 
 ## Configuração
@@ -226,7 +297,7 @@ O servidor lê um arquivo como [`config/arca.conf`](config/arca.conf), depois as
 | `maxclients` / `timeout` | `10000` / `0` | Limite de conexões e segundos de inatividade (0 desliga) |
 | `slowlog-log-slower-than` | `10000` | Microssegundos para um comando entrar no slowlog |
 
-No gateway: `ARCA_ADDR`, `ARCA_PASSWORD`, `ARCA_HTTP_ADDR` (`:8080`), `ARCA_WEB_DIR`, `ARCA_SEED` e `ARCA_SESSION_HOURS`.
+No gateway: `ARCA_ADDR`, `ARCA_PASSWORD`, `ARCA_HTTP_ADDR` (`:8080`), `ARCA_WEB_DIR`, `ARCA_SEED`, `ARCA_SESSION_HOURS`, `ARCA_POOL_SIZE` (conexões com o servidor, padrão 16), `ARCA_LOG_LEVEL` e `ARCA_PUBLIC_ADDR` (endereço do servidor mostrado em Integrações, por exemplo `banco.suaempresa.com:7379`).
 
 ## Embutindo e estendendo
 
@@ -254,9 +325,12 @@ O exemplo completo está em [`examples/embedded.cpp`](examples/embedded.cpp).
 | Criar uma função SQL | Adicione o nome em `ValidateFunctions` e o cálculo em `Eval` (`src/sql/engine.cpp`) |
 | Mudar a política de compactação | `VersionSet::Finalize` e `PickCompaction` em `src/db/version_set.cpp` |
 | Trocar o formato das SSTables | `src/table/` (blocos, índice, Bloom e rodapé) |
-| Nova rota da API | `gateway/internal/api/` |
-| Nova tela | `web/src/pages/` e a lista de páginas em `web/src/App.tsx` |
-| Cores, fontes e identidade visual | Tokens no topo de `web/src/styles.css` (claro e escuro) e as classes `page-grid`, `stats-row` e `panel-lid` |
+| Nova rota da API | `gateway/internal/api/` e o esquema em `openapi.go` |
+| Novo evento de webhook | `gateway/internal/api/webhooks.go` (lista de eventos e o mapa das ações auditadas) |
+| Nova métrica do Prometheus | `gateway/internal/api/extras.go` |
+| Nova tela | `web/src/pages/` e a lista `pages` em `web/src/App.tsx` (título, papel mínimo e a letra do atalho `g`) |
+| Nova ação na paleta de comandos | `paletteItems` em `web/src/App.tsx` |
+| Cores, fontes e identidade visual | Tokens no topo de `web/src/styles.css` (claro e escuro), a coluna de estratos em `web/src/components/Levels.tsx` e as classes `core-*` |
 
 ## Segurança
 
@@ -266,15 +340,17 @@ O exemplo completo está em [`examples/embedded.cpp`](examples/embedded.cpp).
 | Dados em disco | CRC32C em cada registro do WAL e em cada bloco de SSTable; o `LOCK` impede dois processos no mesmo diretório |
 | Senhas do painel | PBKDF2-SHA256 com 210 mil iterações e sal. Cinco erros seguidos bloqueiam a conta por 5 minutos |
 | Sessões | Token aleatório de 32 bytes; no banco fica só o SHA-256, com expiração (padrão 12 horas) |
+| Chaves de acesso | Mostradas uma única vez, guardadas só como SHA-256, com papel limitado ao do dono, validade opcional e registro do último uso |
+| Webhooks | Corpo assinado com HMAC-SHA256 e segredo próprio por webhook, que pode ser trocado a qualquer momento |
 | Papéis | Leitura, Operador e Administrador, checados em cada rota |
-| Auditoria | Logins, gravações, SQL de escrita, flush, compactação, checkpoint, configuração e usuários |
+| Auditoria | Logins, gravações, importações, SQL de escrita, flush, compactação, checkpoint, configuração, chaves de acesso, webhooks e usuários |
 | Cabeçalhos | `Content-Security-Policy`, `X-Frame-Options: DENY`, `nosniff` e `Cache-Control: no-store` na API |
 | Repositório | Nenhum dado pessoal real. Segredos só no `.env`, que fica fora do Git |
 
 ## Estrutura
 
 ```
-LSM-Tree-Database-Server/
+Persistent-Key-Value-Server/
 ├── include/arca/            API pública do motor (DB, opções, lotes, iteradores)
 ├── src/
 │   ├── util/                varint, CRC32C, arena, arquivos e trava de diretório
@@ -286,8 +362,8 @@ LSM-Tree-Database-Server/
 ├── tools/                   arca-server, arca-cli, arca-bench e arca-inspect
 ├── examples/                motor embutido num programa C++
 ├── tests/                   testes do motor, do SQL e do servidor
-├── gateway/                 API em Go (biblioteca padrão)
-├── web/                     painel em React + TypeScript
+├── gateway/                 API em Go (biblioteca padrão): REST, tokens, webhooks e /metrics
+├── web/                     painel em React + TypeScript, com paleta de comandos e atalhos
 ├── config/                  arca.conf de exemplo
 ├── docs/                    manuais em PDF e imagens
 ├── Dockerfile
@@ -304,10 +380,10 @@ cd gateway && go test ./...
 cd web && npm ci && npm run build
 ```
 
-Os testes do motor comparam milhares de escritas e remoções aleatórias com um `std::map` antes e depois da compactação e depois de reabrir o banco, cortam o fim do WAL para simular queda, conferem snapshots durante a compactação, escrevem de várias threads ao mesmo tempo e abrem um checkpoint como banco. Os do servidor sobem a Arca numa porta livre e testam comandos, expiração, `MULTI/EXEC`, pipelining, SQL e senha.
+Os testes do motor comparam milhares de escritas e remoções aleatórias com um `std::map` antes e depois da compactação e depois de reabrir o banco, cortam o fim do WAL para simular queda, conferem snapshots durante a compactação, escrevem de várias threads ao mesmo tempo e abrem um checkpoint como banco. Os do servidor sobem a Arca numa porta livre e testam comandos, expiração, `MULTI/EXEC`, pipelining, SQL, senha, checkpoints e a verificação de integridade (inclusive com uma SSTable corrompida de propósito). Os do gateway cobrem chaves de acesso, papéis, webhooks com assinatura conferida, `/metrics`, importação e exportação.
 
 O workflow [`ci.yml`](.github/workflows/ci.yml) compila com GCC, Clang e MSVC, roda os testes com AddressSanitizer e ThreadSanitizer, testa o gateway e o painel e monta as imagens Docker.
 
 ## Licença
 
-[MIT](LICENSE). Use, copie, altere e distribua à vontade. As fontes Instrument Sans, Bricolage Grotesque e IBM Plex Mono do painel são distribuídas sob a [SIL Open Font License](web/OFL.txt).
+[MIT](LICENSE). Use, copie, altere e distribua à vontade. As fontes Archivo e IBM Plex Mono do painel são distribuídas sob a [SIL Open Font License](web/OFL.txt).

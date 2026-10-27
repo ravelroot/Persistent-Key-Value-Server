@@ -1,9 +1,19 @@
 import { api } from '../api'
 import { LineChart, Meter } from '../components/Charts'
-import { LevelBars } from '../components/Levels'
-import { Badge, Empty, ErrorBox, KV, Loading, Panel, Stat } from '../components/ui'
-import { bytes, dec, duration, ms, num, pct, ago } from '../format'
+import { CoreSample } from '../components/Levels'
+import { Badge, Empty, ErrorBox, KV, Loading, Panel } from '../components/ui'
+import { ago, bytes, dec, ms, num, pct } from '../format'
 import { useAsync, useMetrics } from '../state'
+
+function Readout({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: React.ReactNode; tone?: 'warn' }) {
+  return (
+    <div className={`readout${tone ? ' readout-' + tone : ''}`}>
+      <span className="readout-label">{label}</span>
+      <span className="readout-value">{value}</span>
+      {hint ? <span className="readout-hint">{hint}</span> : null}
+    </div>
+  )
+}
 
 export function Overview() {
   const { data, error, reload } = useAsync(() => api.overview(), [], 5000)
@@ -17,92 +27,92 @@ export function Overview() {
   const hitRatio = latest ? latest.cache_hit_ratio : e.block_cache_hits + e.block_cache_misses > 0 ? e.block_cache_hits / (e.block_cache_hits + e.block_cache_misses) : 0
   const bloomRatio = e.bloom_checks > 0 ? e.bloom_useful / e.bloom_checks : 0
   const keyspaceRatio = data.commands.keyspace_hits + data.commands.keyspace_misses > 0 ? data.commands.keyspace_hits / (data.commands.keyspace_hits + data.commands.keyspace_misses) : 0
+  const amp = latest?.write_amplification ?? e.write_amplification
+  const reads = latest?.reads_per_sec ?? 0
+  const writes = latest?.writes_per_sec ?? 0
 
   return (
-    <>
-      <div className="server-strip">
-        <span>
-          <Badge tone="accent">v{data.server.version}</Badge>
-        </span>
-        <span>porta <b>{data.server.port}</b></span>
-        <span>no ar há <b>{duration(data.server.uptime_s)}</b></span>
-        <span>
-          fsync <b>{data.server.appendfsync}</b>
-        </span>
-        <span>
-          threads <b>{data.server.io_threads}</b> de E/S · <b>{data.server.worker_threads}</b> de trabalho
-        </span>
-        <span className="mono strip-dir" title={data.server.dir}>{data.server.dir}</span>
-        {e.compacting ? <Badge tone="warn">compactando</Badge> : null}
-      </div>
-
-      <div className="page-grid">
-
-      <div className="stats-row">
-        <Stat label="Clientes conectados" value={num(latest?.clients ?? data.clients.connected)} hint={`${num(data.clients.total)} conexões desde a partida`} />
-        <Stat label="Chaves e linhas (estimativa)" value={num(e.estimated_keys)} hint={`${num(data.tables)} ${data.tables === 1 ? 'tabela' : 'tabelas'}`} />
-        <Stat label="Dados em SSTables" value={bytes(latest?.sst_bytes ?? e.sst_bytes)} hint={`${num(latest?.sst_files ?? e.sst_files)} arquivos`} />
-        <Stat
-          label="Amplificação de escrita"
-          value={`${dec(latest?.write_amplification ?? e.write_amplification, 2)}×`}
-          hint="bytes gravados em disco por byte do usuário"
-          tone={(latest?.write_amplification ?? e.write_amplification) > 10 ? 'warn' : undefined}
+    <div className="ov">
+      <Panel title="Estratos" className="ov-core" actions={<span className="panel-note">{num(e.estimated_keys)} chaves e linhas</span>}>
+        <CoreSample
+          levels={data.levels}
+          liveFiles={latest?.level_files}
+          memtableBytes={latest?.memtable_bytes ?? e.memtable_bytes}
+          memtableEntries={e.memtable_entries}
+          immutableBytes={latest?.immutable_bytes ?? e.immutable_bytes}
+          compacting={latest?.compacting ?? e.compacting}
         />
-        <Stat label="Acerto do cache de blocos" value={pct(hitRatio)} hint={<Meter value={e.block_cache_bytes} max={e.block_cache_capacity} label="Uso do cache" />} />
-      </div>
+      </Panel>
 
-      <Panel title="Leituras e escritas por segundo" className="span-2 panel-lid">
-        <div className="lid-value">
-          <span className="lid-label">Operações por segundo agora</span>
-          <strong className="lid-number">
-            {dec(ops)}
-            <small>ops/s</small>
-          </strong>
-          <span className="lid-sub">
-            <b>{num(data.commands.reads)}</b> leituras e <b>{num(data.commands.writes)}</b> escritas desde a partida
-          </span>
+      <Panel title="Tráfego" className="ov-traffic" actions={<span className="panel-note">últimos 2 minutos</span>}>
+        <div className="traffic-head">
+          <div className="traffic-now">
+            <strong className="figure">{dec(ops)}</strong>
+            <span>operações por segundo</span>
+          </div>
+          <dl className="traffic-split">
+            <div>
+              <dt>
+                <i className="swatch swatch-a" aria-hidden="true" />
+                Leituras
+              </dt>
+              <dd>{dec(reads)}/s</dd>
+            </div>
+            <div>
+              <dt>
+                <i className="swatch swatch-b" aria-hidden="true" />
+                Escritas
+              </dt>
+              <dd>{dec(writes)}/s</dd>
+            </div>
+          </dl>
         </div>
         <LineChart
+          height={210}
           series={[
             { name: 'Leituras', values: history.map((m) => m.reads_per_sec), tone: 'a' },
             { name: 'Escritas', values: history.map((m) => m.writes_per_sec), tone: 'b' },
           ]}
           format={(v) => dec(v)}
         />
+        <p className="traffic-total">
+          {num(data.commands.reads)} leituras e {num(data.commands.writes)} escritas desde que o servidor subiu.
+        </p>
       </Panel>
 
-      <Panel title="Memtable e memtable imutável">
-        <LineChart
-          height={150}
-          series={[
-            { name: 'Memtable', values: history.map((m) => m.memtable_bytes), tone: 'c' },
-            { name: 'Imutável', values: history.map((m) => m.immutable_bytes), tone: 'b' },
-          ]}
-          format={(v) => bytes(v)}
+      <section className="readouts ov-readouts" aria-label="Indicadores">
+        <Readout label="Clientes conectados" value={num(latest?.clients ?? data.clients.connected)} hint={`${num(data.clients.total)} conexões desde a partida`} />
+        <Readout label="Dados em disco" value={bytes(latest?.sst_bytes ?? e.sst_bytes)} hint={`${num(latest?.sst_files ?? e.sst_files)} SSTables em ${num(data.tables)} ${data.tables === 1 ? 'tabela' : 'tabelas'} e chaves`} />
+        <Readout
+          label="Amplificação de escrita"
+          value={`${dec(amp, 2)}×`}
+          hint={amp > 10 ? 'Alta: a compactação está regravando muito. Veja Armazenamento.' : 'bytes gravados no disco para cada byte recebido'}
+          tone={amp > 10 ? 'warn' : undefined}
         />
+        <Readout label="Acerto do cache de blocos" value={pct(hitRatio)} hint={<Meter value={e.block_cache_bytes} max={e.block_cache_capacity} label={`${bytes(e.block_cache_bytes)} de ${bytes(e.block_cache_capacity)} em uso`} />} />
+      </section>
+
+      <div className="ov-kvs">
+      <Panel title="Memória e log">
         <KV
           items={[
             ['Entradas na memtable', num(e.memtable_entries)],
+            ['Memtable imutável', bytes(e.immutable_bytes)],
             ['Log de escrita (WAL)', `#${e.wal_number} · ${bytes(e.wal_bytes)}`],
             ['Sequência atual', num(e.last_sequence)],
+            ['Snapshots abertos', num(e.snapshots)],
           ]}
         />
       </Panel>
 
-      <Panel title="Níveis da LSM-Tree">
-        <LevelBars levels={data.levels} live={latest?.level_files} />
-      </Panel>
-
-      <Panel title="Motor de armazenamento">
+      <Panel title="Motor">
         <KV
           items={[
-            ['Flushes de memtable', num(e.flushes)],
+            ['Gravações da memtable', num(e.flushes)],
             ['Compactações', num(e.compactions)],
-            ['Lido / gravado em compactações', `${bytes(e.compaction_bytes_read)} / ${bytes(e.compaction_bytes_written)}`],
-            ['Bytes do usuário', bytes(e.user_bytes_written)],
-            ['Filtro de Bloom evitou leituras', `${pct(bloomRatio)} de ${num(e.bloom_checks)}`],
-            ['Travamentos de escrita', num(e.write_stalls)],
-            ['Snapshots abertos', num(e.snapshots)],
+            ['Lido / gravado compactando', `${bytes(e.compaction_bytes_read)} / ${bytes(e.compaction_bytes_written)}`],
+            ['Leituras evitadas pelo Bloom', `${pct(bloomRatio)} de ${num(e.bloom_checks)}`],
+            ['Escritas que esperaram', num(e.write_stalls)],
           ]}
         />
       </Panel>
@@ -111,8 +121,7 @@ export function Overview() {
         <KV
           items={[
             ['Total processado', num(data.commands.total)],
-            ['Leituras / escritas', `${num(data.commands.reads)} / ${num(data.commands.writes)}`],
-            ['Acertos no keyspace', `${pct(keyspaceRatio)} (${num(data.commands.keyspace_hits)})`],
+            ['Chaves encontradas', `${pct(keyspaceRatio)} das buscas`],
             ['Chaves expiradas', num(data.commands.expired_keys)],
             ['Rede (entrada / saída)', `${bytes(data.commands.net_input_bytes)} / ${bytes(data.commands.net_output_bytes)}`],
             ['Conexões recusadas', num(data.clients.rejected)],
@@ -120,9 +129,11 @@ export function Overview() {
         />
       </Panel>
 
-      <Panel title="Compactações recentes" className="span-3" flush>
+      </div>
+
+      <Panel title="Compactações recentes" className="ov-wide" flush>
         {data.recent_compactions.length === 0 ? (
-          <Empty title="Nenhuma compactação ainda">Elas aparecem aqui quando um nível passa do limite ou quando você compacta pela tela Armazenamento.</Empty>
+          <Empty title="Nenhuma compactação ainda">Elas aparecem aqui quando um nível passa do limite, ou quando você compacta pela tela Armazenamento.</Empty>
         ) : (
           <div className="table-wrap">
             <table className="grid">
@@ -131,8 +142,8 @@ export function Overview() {
                   <th>Quando</th>
                   <th>Níveis</th>
                   <th>Motivo</th>
-                  <th className="num">Entrada</th>
-                  <th className="num">Saída</th>
+                  <th className="num">Arquivos lidos</th>
+                  <th className="num">Arquivos gerados</th>
                   <th className="num">Lido</th>
                   <th className="num">Gravado</th>
                   <th className="num">Duração</th>
@@ -142,8 +153,12 @@ export function Overview() {
                 {data.recent_compactions.slice(0, 8).map((c, i) => (
                   <tr key={i}>
                     <td>{ago(c.at)}</td>
-                    <td className="mono">
-                      L{c.from_level} → L{c.to_level}
+                    <td>
+                      <span className="level-path">
+                        <i className={`lv lv-${c.from_level}`} />L{c.from_level}
+                        <span aria-label="para"> → </span>
+                        <i className={`lv lv-${c.to_level}`} />L{c.to_level}
+                      </span>
                     </td>
                     <td>
                       <Badge tone={c.reason === 'manual' ? 'accent' : 'neutral'}>{c.reason === 'size' ? 'tamanho' : c.reason}</Badge>
@@ -160,7 +175,6 @@ export function Overview() {
           </div>
         )}
       </Panel>
-      </div>
-    </>
+    </div>
   )
 }

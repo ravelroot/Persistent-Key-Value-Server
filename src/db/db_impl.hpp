@@ -41,6 +41,7 @@ class DBImpl final : public DB {
   void SetSyncMode(SyncMode mode) override { sync_mode_.store(static_cast<int>(mode)); }
   SyncMode GetSyncMode() const override { return static_cast<SyncMode>(sync_mode_.load()); }
   EngineStats GetStats() override;
+  Status VerifyChecksums(VerifyResult* result) override;
 
  private:
   struct Writer;

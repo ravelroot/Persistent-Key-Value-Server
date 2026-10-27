@@ -230,3 +230,107 @@ export interface Health {
   arca: 'ok' | 'down'
   ready: boolean
 }
+
+export interface ApiToken {
+  id: string
+  name: string
+  role: Role
+  prefix: string
+  owner: string
+  created_at: number
+  last_used_at: number | null
+  expires_at: number | null
+}
+
+export interface TokenCreated {
+  token: string
+  info: ApiToken
+}
+
+export interface WebhookEvent {
+  id: string
+  label: string
+}
+
+export interface Webhook {
+  id: string
+  url: string
+  events: string[]
+  active: boolean
+  created_at: number
+  last_status: number | null
+  last_delivery_at: number | null
+  failures: number
+}
+
+export interface WebhookSaved {
+  webhook: Webhook
+  secret?: string
+}
+
+export interface WebhookTest {
+  status: number
+  ms: number
+  error?: string
+}
+
+export interface WebhookDelivery {
+  id: string
+  at: number
+  event: string
+  status: number
+  ms: number
+  error?: string
+}
+
+export interface KeyExportItem {
+  key: string
+  value: string
+  ttl_ms?: number | null
+}
+
+export interface KeyImportResult {
+  imported: number
+  skipped: number
+  failed: number
+}
+
+export interface TableImportResult {
+  inserted: number
+  failed: number
+  errors: { line: number; message: string }[]
+}
+
+export interface SavedQuery {
+  id: string
+  name: string
+  query: string
+  owner: string
+  shared: boolean
+  created_at: number
+}
+
+export interface Checkpoint {
+  name: string
+  created_ms: number
+  bytes: number
+  files: number
+}
+
+export interface VerifyResult {
+  files: number
+  bytes: number
+  ok: number
+  corrupt: { file: string; error: string }[]
+  ms: number
+}
+
+export interface Integrations {
+  version: string
+  redis_host: string
+  redis_port: number
+  http_base: string
+  openapi_url: string
+  metrics_url: string
+  requires_password: boolean
+}

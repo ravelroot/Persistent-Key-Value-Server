@@ -36,17 +36,19 @@ export function Login({ onLogin }: { onLogin: (u: User) => void }) {
     <div className="login">
       <div className="login-art" aria-hidden="true">
         <div className="login-caption">
-          <Logo size={40} />
+          <Logo size={36} />
           <p>Escritas entram na memtable, viram SSTables e descem em camadas até o fundo.</p>
-          <span>WAL · memtable · L0 → L6 · compactação em níveis</span>
         </div>
-        <div className="login-strata">
+        <ol className="login-strata">
+          <li className="ls-mem">
+            <span>memtable</span>
+          </li>
           {[0, 1, 2, 3, 4, 5, 6].map((l) => (
-            <span key={l} style={{ width: `${18 + l * 13}%` }}>
-              <i>L{l}</i>
-            </span>
+            <li key={l} className={`ls-l${l}`}>
+              <span>L{l}</span>
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
@@ -73,7 +75,7 @@ export function Login({ onLogin }: { onLogin: (u: User) => void }) {
           Entrar
         </Button>
         <div className="login-demo">
-          <span>Contas de demonstração · senha Arca@2026</span>
+          <span>Entre com uma conta de demonstração (senha Arca@2026):</span>
           <div>
             {demo.map(([mail, label]) => (
               <button

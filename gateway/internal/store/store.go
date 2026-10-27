@@ -191,6 +191,7 @@ func (s *Store) Bootstrap(ctx context.Context) error {
 		"CREATE TABLE IF NOT EXISTS " + UsersTable + " (email TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL, password TEXT NOT NULL, created_at INT, failed INT DEFAULT 0, locked_until INT DEFAULT 0)",
 		"CREATE TABLE IF NOT EXISTS " + AuditTable + " (id INT PRIMARY KEY AUTOINCREMENT, at INT, email TEXT, action TEXT, detail TEXT)",
 	}
+	stmts = append(stmts, extraTables...)
 	for _, q := range stmts {
 		if _, err := s.SQL(ctx, q); err != nil {
 			return err
@@ -207,6 +208,8 @@ type User struct {
 	CreatedAt   int64  `json:"created_at"`
 	Failed      int64  `json:"-"`
 	LockedUntil int64  `json:"-"`
+	// TokenName é o nome do token de API usado na requisição (vazio numa sessão do painel).
+	TokenName string `json:"-"`
 }
 
 func (u *User) Locked(now time.Time) bool {

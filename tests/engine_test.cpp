@@ -274,3 +274,40 @@ TEST(CheckpointAbreComoBanco) {
   DestroyDB(dir);
   DestroyDB(copy);
 }
+
+TEST(VerificacaoDeChecksums) {
+  auto dir = test::TempDir("verifica");
+  {
+    auto db = OpenDB(dir);
+    for (int i = 0; i < 3000; ++i) CHECK_OK(db->Put({}, Key(i), std::string(100, 'a' + (i % 26))));
+    CHECK_OK(db->Flush());
+    VerifyResult r;
+    CHECK_OK(db->VerifyChecksums(&r));
+    CHECK(r.files > 0);
+    CHECK_EQ(r.ok, r.files);
+    CHECK(r.bytes > 0);
+    CHECK(r.corrupt.empty());
+
+    std::string victim;
+    for (const auto& e : std::filesystem::directory_iterator(dir)) {
+      if (e.path().extension() == ".sst") {
+        victim = e.path().string();
+        break;
+      }
+    }
+    CHECK(!victim.empty());
+    {
+      std::FILE* f = std::fopen(victim.c_str(), "r+b");
+      CHECK(f != nullptr);
+      std::fseek(f, 100, SEEK_SET);
+      int ch = std::fgetc(f);
+      std::fseek(f, 100, SEEK_SET);
+      std::fputc(ch ^ 0x5a, f);
+      std::fclose(f);
+    }
+    CHECK_OK(db->VerifyChecksums(&r));
+    CHECK_EQ(r.corrupt.size(), size_t(1));
+    CHECK_EQ(r.ok + 1, r.files);
+  }
+  DestroyDB(dir);
+}

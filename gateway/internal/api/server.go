@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,14 +23,21 @@ import (
 	"arca/gateway/internal/store"
 )
 
+// Version é a versão do gateway, exibida no OpenAPI, em /api/integrations e nos webhooks.
+const Version = "1.2.0"
+
 type Server struct {
 	cfg    config.Config
 	store  *store.Store
 	client *resp.Client
 	log    *slog.Logger
 	hub    *Hub
+	hooks  *Dispatcher
 	mux    *http.ServeMux
 	ready  atomic.Bool
+
+	httpMu     sync.Mutex
+	httpCounts map[int]int64
 }
 
 type ctxKey int
@@ -36,10 +45,16 @@ type ctxKey int
 const userKey ctxKey = 1
 
 func New(cfg config.Config, client *resp.Client, st *store.Store, logger *slog.Logger) *Server {
-	s := &Server{cfg: cfg, store: st, client: client, log: logger, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, store: st, client: client, log: logger, mux: http.NewServeMux(), httpCounts: map[int]int64{}}
 	s.hub = NewHub(st, logger, time.Second)
+	s.hooks = NewDispatcher(st, logger)
 	s.routes()
 	return s
+}
+
+// Hooks devolve o despachante de webhooks.
+func (s *Server) Hooks() *Dispatcher {
+	return s.hooks
 }
 
 func (s *Server) SetReady(v bool) {
@@ -101,6 +116,34 @@ func (s *Server) routes() {
 	m.Handle("DELETE /api/users/{email}", s.auth(auth.RoleAdmin, s.handleUserDelete))
 	m.Handle("GET /api/audit", s.auth(auth.RoleAdmin, s.handleAudit))
 
+	m.Handle("GET /api/tokens", s.auth(auth.RoleReader, s.handleTokens))
+	m.Handle("POST /api/tokens", s.auth(auth.RoleReader, s.handleTokenCreate))
+	m.Handle("DELETE /api/tokens/{id}", s.auth(auth.RoleReader, s.handleTokenDelete))
+
+	m.Handle("GET /api/webhooks/events", s.auth(auth.RoleAdmin, s.handleWebhookEvents))
+	m.Handle("GET /api/webhooks", s.auth(auth.RoleAdmin, s.handleWebhooks))
+	m.Handle("POST /api/webhooks", s.auth(auth.RoleAdmin, s.handleWebhookCreate))
+	m.Handle("PATCH /api/webhooks/{id}", s.auth(auth.RoleAdmin, s.handleWebhookUpdate))
+	m.Handle("DELETE /api/webhooks/{id}", s.auth(auth.RoleAdmin, s.handleWebhookDelete))
+	m.Handle("POST /api/webhooks/{id}/test", s.auth(auth.RoleAdmin, s.handleWebhookTest))
+	m.Handle("GET /api/webhooks/{id}/deliveries", s.auth(auth.RoleAdmin, s.handleWebhookDeliveries))
+
+	m.Handle("GET /api/keys/export", s.auth(auth.RoleReader, s.handleKeysExport))
+	m.Handle("POST /api/keys/import", s.auth(auth.RoleOperator, s.handleKeysImport))
+	m.Handle("GET /api/tables/{name}/export", s.auth(auth.RoleReader, s.handleTableExport))
+	m.Handle("POST /api/tables/{name}/import", s.auth(auth.RoleOperator, s.handleTableImport))
+
+	m.Handle("GET /api/queries", s.auth(auth.RoleReader, s.handleQueries))
+	m.Handle("POST /api/queries", s.auth(auth.RoleReader, s.handleQueryCreate))
+	m.Handle("DELETE /api/queries/{id}", s.auth(auth.RoleReader, s.handleQueryDelete))
+
+	m.Handle("GET /api/storage/checkpoints", s.auth(auth.RoleReader, s.handleCheckpoints))
+	m.Handle("DELETE /api/storage/checkpoints/{name}", s.auth(auth.RoleAdmin, s.handleCheckpointDelete))
+	m.Handle("POST /api/storage/verify", s.auth(auth.RoleOperator, s.handleVerify))
+
+	m.Handle("GET /api/integrations", s.auth(auth.RoleReader, s.handleIntegrations))
+	m.Handle("GET /metrics", s.auth(auth.RoleReader, s.handleMetrics))
+
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "Rota não encontrada.", nil)
 	})
@@ -155,10 +198,14 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, out any) bool {
-	body := http.MaxBytesReader(w, r.Body, 1<<20)
+	return decodeBodyLimit(w, r, out, 1<<20)
+}
+
+func decodeBodyLimit(w http.ResponseWriter, r *http.Request, out any, limit int64) bool {
+	body := http.MaxBytesReader(w, r.Body, limit)
 	data, err := io.ReadAll(body)
 	if err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "O corpo da requisição passa de 1 MB.", nil)
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large", fmt.Sprintf("O corpo da requisição passa de %d MB.", limit>>20), nil)
 		return false
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -196,6 +243,9 @@ func (s *Server) needReady(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) authenticate(r *http.Request, token string) (*store.User, int, string) {
 	if token == "" {
 		return nil, http.StatusUnauthorized, "Faça login para continuar."
+	}
+	if strings.HasPrefix(token, apiTokenPrefix) {
+		return s.authenticateToken(r, token)
 	}
 	email, err := s.store.SessionEmail(r.Context(), token)
 	if err != nil {
@@ -239,12 +289,34 @@ func (s *Server) audit(r *http.Request, action, detail string) {
 	email := ""
 	if u := currentUser(r); u != nil {
 		email = u.Email
+		if u.TokenName != "" {
+			email += " (token " + u.TokenName + ")"
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 	defer cancel()
 	if err := s.store.Audit(ctx, email, action, detail); err != nil {
 		s.log.Warn("auditoria não registrada", "acao", action, "erro", err)
 	}
+	if event, ok := auditEvents[action]; ok {
+		s.hooks.Emit(event, email, detail)
+	}
+}
+
+func (s *Server) countHTTP(status int) {
+	s.httpMu.Lock()
+	s.httpCounts[status]++
+	s.httpMu.Unlock()
+}
+
+func (s *Server) httpSnapshot() map[int]int64 {
+	s.httpMu.Lock()
+	defer s.httpMu.Unlock()
+	out := make(map[int]int64, len(s.httpCounts))
+	for k, v := range s.httpCounts {
+		out[k] = v
+	}
+	return out
 }
 
 type statusRecorder struct {
@@ -276,6 +348,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
+		s.countHTTP(rec.status)
 		s.log.Info("http", "metodo", r.Method, "rota", r.URL.Path, "status", rec.status, "ms", float64(time.Since(start).Microseconds())/1000)
 	})
 }

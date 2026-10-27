@@ -6,6 +6,7 @@
 #include "db/filename.hpp"
 #include "db/write_batch_internal.hpp"
 #include "table/iterators.hpp"
+#include "table/table.hpp"
 
 namespace arca {
 
@@ -952,6 +953,41 @@ Status DBImpl::Checkpoint(const std::string& directory) {
   }
   if (s.ok()) Log("checkpoint criado em " + directory);
   return s;
+}
+
+Status DBImpl::VerifyChecksums(VerifyResult* result) {
+  *result = VerifyResult();
+  auto start = std::chrono::steady_clock::now();
+  std::shared_ptr<const Version> version;
+  {
+    Lock lock(mu_);
+    ++file_deletions_disabled_;
+    version = versions_->current();
+  }
+  for (int level = 0; level < kNumLevels; ++level) {
+    for (const auto& f : version->files_[level]) {
+      std::string name = TableFileName(dbname_, f->number);
+      ++result->files;
+      result->bytes += f->file_size;
+      std::unique_ptr<RandomAccessFile> file;
+      std::shared_ptr<Table> table;
+      Status s = RandomAccessFile::Open(name, &file);
+      if (s.ok()) s = Table::Open(options_, std::move(file), nullptr, nullptr, &table);
+      if (s.ok()) s = table->VerifyAll();
+      if (s.ok()) {
+        ++result->ok;
+      } else {
+        std::string base = name.substr(name.find_last_of("/\\") + 1);
+        result->corrupt.emplace_back(base, s.ToString());
+      }
+    }
+  }
+  {
+    Lock lock(mu_);
+    --file_deletions_disabled_;
+  }
+  result->ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+  return Status::OK();
 }
 
 EngineStats DBImpl::GetStats() {

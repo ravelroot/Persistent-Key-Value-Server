@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	ArcaAddr     string
+	PublicAddr   string
 	ArcaPassword string
 	HTTPAddr     string
 	WebDir       string
@@ -21,6 +22,7 @@ type Config struct {
 func FromEnv() Config {
 	return Config{
 		ArcaAddr:     env("ARCA_ADDR", "127.0.0.1:7379"),
+		PublicAddr:   os.Getenv("ARCA_PUBLIC_ADDR"),
 		ArcaPassword: os.Getenv("ARCA_PASSWORD"),
 		HTTPAddr:     env("ARCA_HTTP_ADDR", ":8080"),
 		WebDir:       env("ARCA_WEB_DIR", "../web/dist"),

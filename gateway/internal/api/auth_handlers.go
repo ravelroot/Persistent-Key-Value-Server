@@ -346,6 +346,9 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	if err := s.store.DeleteTokensOf(ctx, email); err != nil {
+		s.log.Warn("tokens do usuário removido não apagados", "email", email, "erro", err)
+	}
 	s.audit(r, "usuario_removido", email)
 	w.WriteHeader(http.StatusNoContent)
 }

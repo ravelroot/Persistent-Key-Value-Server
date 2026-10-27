@@ -17,8 +17,6 @@ import (
 	"arca/gateway/internal/store"
 )
 
-var version = "1.1.0"
-
 func main() {
 	cfg := config.FromEnv()
 	level := slog.LevelInfo
@@ -52,7 +50,7 @@ func main() {
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("gateway no ar", "versao", version, "http", cfg.HTTPAddr, "arca", cfg.ArcaAddr, "painel", cfg.WebDir)
+		logger.Info("gateway no ar", "versao", api.Version, "http", cfg.HTTPAddr, "arca", cfg.ArcaAddr, "painel", cfg.WebDir)
 		errCh <- httpServer.ListenAndServe()
 	}()
 
