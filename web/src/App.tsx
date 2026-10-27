@@ -174,7 +174,7 @@ function Shell({ user, theme, toggleTheme, onLogout, onUser }: { user: User; the
         <aside className="side" aria-label="Menu">
           <div className="brand">
             <span className="brand-mark">
-              <Logo size={20} />
+              <Logo size={15} />
             </span>
             <strong>Arca</strong>
           </div>
@@ -302,7 +302,7 @@ export function App() {
     return (
       <div className="boot">
         <span className="brand-mark">
-          <Logo size={24} />
+          <Logo size={18} />
         </span>
         <Loading label="Abrindo o painel…" />
       </div>
