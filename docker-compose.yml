@@ -3,7 +3,7 @@ services:
     build:
       context: .
       target: server
-    image: arca-server:1.2.0
+    image: arca-server:1.2.1
     restart: unless-stopped
     environment:
       ARCA_PASSWORD: ${ARCA_PASSWORD:?defina ARCA_PASSWORD no arquivo .env}
@@ -23,7 +23,7 @@ services:
     build:
       context: .
       target: gateway
-    image: arca-gateway:1.2.0
+    image: arca-gateway:1.2.1
     restart: unless-stopped
     depends_on:
       arca:

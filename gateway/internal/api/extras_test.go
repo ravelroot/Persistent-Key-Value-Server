@@ -438,7 +438,7 @@ func TestCheckpointsVerifyIntegrations(t *testing.T) {
 			t.Fatalf("rota %s ausente da OpenAPI", p)
 		}
 	}
-	if doc["info"].(map[string]any)["version"] != "1.2.0" {
+	if doc["info"].(map[string]any)["version"] != "1.2.1" {
 		t.Fatalf("versão da OpenAPI: %v", doc["info"])
 	}
 }

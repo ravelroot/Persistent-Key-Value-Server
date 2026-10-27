@@ -36,7 +36,6 @@ export function Overview() {
       <Panel title="Estratos" className="ov-core" actions={<span className="panel-note">{num(e.estimated_keys)} chaves e linhas</span>}>
         <CoreSample
           levels={data.levels}
-          liveFiles={latest?.level_files}
           memtableBytes={latest?.memtable_bytes ?? e.memtable_bytes}
           memtableEntries={e.memtable_entries}
           immutableBytes={latest?.immutable_bytes ?? e.immutable_bytes}

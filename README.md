@@ -20,12 +20,12 @@
 > **Banco de dados:** [`Banco-de-Dados-Arca.pdf`](Banco-de-Dados-Arca.pdf) descreve a arquitetura de armazenamento que a aplicação segue: LSM-Tree, formato do WAL, das SSTables e do MANIFEST, codificação das chaves e das linhas, compactação, checkpoints, verificação de integridade e recuperação.
 
 <p align="center">
-  <img src="docs/images/tela-visao-geral.png" alt="Visão geral: a coluna de estratos com a memtable em âmbar e os níveis L0 a L6 em verde-pátina, ao lado do tráfego por segundo">
+  <img src="docs/images/tela-visao-geral.png" alt="Visão geral: a coluna de estratos com a memtable em âmbar e os níveis L0 a L6 em tons de grafite, ao lado do tráfego por segundo">
 </p>
 
-## Novidades da 1.2.0
+## Novidades da 1.2
 
-- **Visual novo, "estratos e pátina":** o painel ganhou identidade própria. A visão geral abre com a coluna de estratos, que mostra a memtable (memória, em âmbar) por cima dos níveis L0 a L6 (disco, em verde-pátina) com espessura proporcional ao tamanho; quando há compactação, as faixas mostram os dados descendo. Barra de status fixa no rodapé, tema escuro revisto e textos reescritos para dizer o que cada coisa faz.
+- **Visual novo, "estratos e grafite":** o painel ganhou identidade própria. A visão geral abre com a coluna de estratos, que mostra a memtable (memória, em âmbar) por cima dos níveis L0 a L6 (disco, em tons de grafite do claro ao quase preto) com espessura proporcional ao tamanho; quando há compactação, as faixas mostram os dados descendo. Barra de status fixa no rodapé, tema escuro revisto e textos reescritos para dizer o que cada coisa faz.
 - **Paleta de comandos e atalhos:** `Ctrl K` (ou `⌘ K`) procura qualquer tela ou ação (gravar a memtable, compactar, criar checkpoint, trocar o tema). `g` + letra navega sem tirar a mão do teclado e `?` mostra a lista.
 - **Integrações:** tela nova com exemplos prontos para conectar por redis-cli, Python, Node.js, Go, Java e pela API REST; **chaves de acesso** (tokens de API com papel e validade); **webhooks** assinados com HMAC-SHA256 para gravações, compactações, checkpoints, logins e mudanças de configuração; e **métricas para o Prometheus** em `/metrics`.
 - **Importar e exportar:** chaves em JSON (com TTL) e tabelas em CSV ou JSON, pelo painel ou pela API, com prévia antes de gravar e erros apontados por linha.
@@ -45,7 +45,7 @@
 - **Tabelas com SQL:** `CREATE TABLE`, índices secundários, `INSERT`, `SELECT` com `WHERE`, `GROUP BY`, `ORDER BY`, agregações e `EXPLAIN`, `UPDATE`, `DELETE`, `ALTER TABLE ADD COLUMN`, tudo gravado na mesma LSM-Tree.
 - **Painel web e API:** gateway em Go com API REST, eventos em tempo real (SSE), papéis e auditoria; painel em React para ver níveis, SSTables, chaves, tabelas e rodar SQL.
 - **Integrações:** chaves de acesso para scripts e serviços, webhooks assinados, métricas no formato do Prometheus, importação e exportação em JSON e CSV, e o esquema OpenAPI da API.
-- **Identidade "estratos e pátina":** a Arca guarda dados que descem em camadas, então o painel desenha isso. Disco é frio (verde-pátina, do cobre oxidado de um baú antigo, de `#CFE4DD` no L0 a `#103F37` no L6) e memória é quente (âmbar `#C98B1E`, com hachura enquanto o dado ainda não virou arquivo). Fundo `#F2F3EF`, tinta `#14211E`, destaque `#1E6F62`. Tudo em Archivo, com o eixo de largura condensado nos títulos e números; código, chaves e SQL em IBM Plex Mono. Cor só onde informa: estado da conexão, níveis da LSM-Tree e o que está em memória.
+- **Identidade "estratos e grafite":** a Arca guarda dados que descem em camadas, então o painel desenha isso. Disco é grafite neutro, do cinza claro `#E4E4E6` no L0 ao quase preto `#1F1F23` no L6, como estratos de rocha; memória é a única cor quente (âmbar `#C98B1E`, com hachura enquanto o dado ainda não virou arquivo). Fundo `#F4F4F5`, tinta `#161618`, destaque `#2B2B2E`. Tudo em Archivo, com o eixo de largura condensado nos títulos e números; código, chaves e SQL em IBM Plex Mono. Cor só onde informa: o que está em memória, avisos e erros.
 - **Ferramentas:** `arca-cli` (console com SQL), `arca-bench` (carga), `arca-inspect` (abre SST, WAL e MANIFEST) e uma biblioteca para embutir o motor no seu programa.
 
 ## Arquitetura

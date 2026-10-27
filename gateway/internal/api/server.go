@@ -24,7 +24,7 @@ import (
 )
 
 // Version é a versão do gateway, exibida no OpenAPI, em /api/integrations e nos webhooks.
-const Version = "1.2.0"
+const Version = "1.2.1"
 
 type Server struct {
 	cfg    config.Config

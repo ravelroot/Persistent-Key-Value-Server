@@ -1,23 +1,23 @@
-/* Arca 1.2.0 · identidade "estratos e pátina".
-   Disco é frio (verde-pátina, do cobre oxidado de um baú antigo); memória é quente (âmbar).
-   Os níveis da LSM-Tree usam uma escala única do claro (L0) ao fundo (L6), como estratos. */
+/* Arca 1.2.1 · identidade "estratos e grafite".
+   O disco é grafite neutro, do cinza claro (L0) ao quase preto (L6), como estratos de rocha;
+   a memória é a única cor quente (âmbar), para o dado que ainda não virou arquivo. */
 :root {
-  --bg: #f2f3ef;
+  --bg: #f4f4f5;
   --surface: #ffffff;
-  --surface-2: #f6f7f4;
-  --sunken: #eef1ed;
-  --line: #dce1dd;
-  --line-strong: #c3cbc7;
-  --text: #14211e;
-  --text-2: #3d4a47;
-  --muted: #66716e;
-  --accent: #1e6f62;
-  --accent-hover: #17594f;
+  --surface-2: #f8f8f9;
+  --sunken: #efeff1;
+  --line: #e2e2e5;
+  --line-strong: #c9c9cd;
+  --text: #161618;
+  --text-2: #3d3d43;
+  --muted: #6b6b72;
+  --accent: #2b2b2e;
+  --accent-hover: #161618;
   --accent-ink: #ffffff;
-  --accent-soft: #e3efeb;
+  --accent-soft: #ebebed;
   --warm: #c98b1e;
   --warm-soft: #f7ebd3;
-  --ok: #1e6f62;
+  --ok: #2b2b2e;
   --ok-bg: transparent;
   --warn: #9a6500;
   --warn-bg: transparent;
@@ -25,26 +25,26 @@
   --error-bg: #fbecea;
   --side-bg: var(--surface);
   --side-line: var(--line);
-  --side-text: #3d4a47;
-  --side-muted: #66716e;
+  --side-text: #3d3d43;
+  --side-muted: #6b6b72;
   --side-active: var(--accent-soft);
-  --lid: #14211e;
+  --lid: #161618;
   --lid-text: #ffffff;
-  --lid-muted: #b9c6c2;
-  --lid-line: #2c3a37;
-  --chart-a: #1e6f62;
+  --lid-muted: #a6a6ac;
+  --lid-line: #3d3d43;
+  --chart-a: #2b2b2e;
   --chart-b: #c98b1e;
-  --chart-c: #3d4a47;
-  --grid: #e6eae7;
-  --l0: #cfe4dd;
-  --l1: #a6cec2;
-  --l2: #7cb4a5;
-  --l3: #549888;
-  --l4: #357b6c;
-  --l5: #1f5e52;
-  --l6: #103f37;
+  --chart-c: #6b6b72;
+  --grid: #e9e9eb;
+  --l0: #e4e4e6;
+  --l1: #c9c9cd;
+  --l2: #a6a6ac;
+  --l3: #808087;
+  --l4: #5c5c63;
+  --l5: #3d3d43;
+  --l6: #1f1f23;
   --shadow: none;
-  --shadow-lg: 0 24px 60px rgba(20, 33, 30, 0.18), 0 2px 6px rgba(20, 33, 30, 0.08);
+  --shadow-lg: 0 24px 60px rgba(22, 22, 24, 0.18), 0 2px 6px rgba(22, 22, 24, 0.08);
   --radius: 10px;
   --radius-sm: 7px;
   --sans: 'Archivo Variable', 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -56,22 +56,22 @@
 }
 
 :root[data-theme='dark'] {
-  --bg: #0d1513;
-  --surface: #131d1b;
-  --surface-2: #1a2623;
-  --sunken: #1a2623;
-  --line: #25322f;
-  --line-strong: #34433f;
-  --text: #e5ece9;
-  --text-2: #b9c6c2;
-  --muted: #8a9894;
-  --accent: #5dbfaa;
-  --accent-hover: #7fd0bf;
-  --accent-ink: #062420;
-  --accent-soft: #17302b;
+  --bg: #0f0f11;
+  --surface: #161618;
+  --surface-2: #1e1e21;
+  --sunken: #1e1e21;
+  --line: #2a2a2e;
+  --line-strong: #3a3a3f;
+  --text: #ececee;
+  --text-2: #c4c4c9;
+  --muted: #8e8e95;
+  --accent: #e4e4e6;
+  --accent-hover: #ffffff;
+  --accent-ink: #161618;
+  --accent-soft: #26262a;
   --warm: #e2ae4e;
   --warm-soft: #33270f;
-  --ok: #5dbfaa;
+  --ok: #e4e4e6;
   --ok-bg: transparent;
   --warn: #e2ae4e;
   --warn-bg: transparent;
@@ -79,24 +79,24 @@
   --error-bg: #2d1714;
   --side-bg: var(--surface);
   --side-line: var(--line);
-  --side-text: #b9c6c2;
-  --side-muted: #8a9894;
+  --side-text: #c4c4c9;
+  --side-muted: #8e8e95;
   --side-active: var(--accent-soft);
-  --lid: #1a2623;
-  --lid-text: #e5ece9;
-  --lid-muted: #8a9894;
-  --lid-line: #34433f;
-  --chart-a: #5dbfaa;
+  --lid: #1e1e21;
+  --lid-text: #ececee;
+  --lid-muted: #8e8e95;
+  --lid-line: #3a3a3f;
+  --chart-a: #e4e4e6;
   --chart-b: #e2ae4e;
-  --chart-c: #b9c6c2;
-  --grid: #22302d;
-  --l0: #1d3a34;
-  --l1: #24514a;
-  --l2: #2c6a5f;
-  --l3: #368476;
-  --l4: #4a9f8f;
-  --l5: #6cbba9;
-  --l6: #9ed6c8;
+  --chart-c: #c4c4c9;
+  --grid: #242427;
+  --l0: #2a2a2e;
+  --l1: #3a3a3f;
+  --l2: #505056;
+  --l3: #6b6b72;
+  --l4: #8e8e95;
+  --l5: #b4b4ba;
+  --l6: #dcdcdf;
   --shadow: none;
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55);
   color-scheme: dark;
@@ -1288,7 +1288,7 @@ nav {
 }
 
 .toast {
-  background: #000000;
+  background: var(--lid);
   color: #ffffff;
   padding: 11px 16px;
   border-radius: 10px;
@@ -1301,7 +1301,7 @@ nav {
 }
 
 .toast-error {
-  background: #000000;
+  background: var(--lid);
 }
 
 .toast::before {
@@ -1310,7 +1310,7 @@ nav {
   height: 7px;
   flex: none;
   border-radius: 50%;
-  background: #b9dda6;
+  background: #e4e4e6;
 }
 
 .toast-error::before {
@@ -1323,7 +1323,7 @@ nav {
 }
 
 :root[data-theme='dark'] .toast::before {
-  background: #3e6b2a;
+  background: #3d3d43;
 }
 
 :root[data-theme='dark'] .toast-error::before {
@@ -1757,7 +1757,7 @@ nav {
 
 .login-art {
   background: var(--lid);
-  color: #e5ece9;
+  color: #ececee;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1772,7 +1772,7 @@ nav {
   display: grid;
   gap: 22px;
   max-width: 44ch;
-  color: #9ed6c8;
+  color: #c9c9cd;
 }
 
 .login-caption p {
@@ -1783,7 +1783,7 @@ nav {
   font-size: 44px;
   line-height: 1.02;
   letter-spacing: -0.02em;
-  color: #e5ece9;
+  color: #ececee;
   text-wrap: balance;
 }
 
@@ -1803,7 +1803,7 @@ nav {
   border-radius: 3px;
   font-size: 12px;
   font-weight: 560;
-  color: #14211e;
+  color: #161618;
 }
 
 .login-strata .ls-mem {
@@ -1812,13 +1812,13 @@ nav {
   color: #f7ebd3;
 }
 
-.ls-l0 { height: 12px; background: #cfe4dd; font-size: 0 !important; }
-.ls-l1 { height: 18px; background: #a6cec2; }
-.ls-l2 { height: 26px; background: #7cb4a5; }
-.ls-l3 { height: 36px; background: #549888; }
-.ls-l4 { height: 48px; background: #357b6c; color: #e5ece9 !important; }
-.ls-l5 { height: 62px; background: #1f5e52; color: #e5ece9 !important; }
-.ls-l6 { height: 80px; background: #0b2e28; color: #9ed6c8 !important; box-shadow: inset 0 0 0 1px #2c6a5f; }
+.ls-l0 { height: 12px; background: #e4e4e6; font-size: 0 !important; }
+.ls-l1 { height: 18px; background: #c9c9cd; }
+.ls-l2 { height: 26px; background: #a6a6ac; }
+.ls-l3 { height: 36px; background: #808087; color: #ffffff !important; }
+.ls-l4 { height: 48px; background: #5c5c63; color: #ececee !important; }
+.ls-l5 { height: 62px; background: #3d3d43; color: #ececee !important; }
+.ls-l6 { height: 80px; background: #0a0a0b; color: #a6a6ac !important; box-shadow: inset 0 0 0 1px #3d3d43; }
 
 .login-card {
   align-self: center;
