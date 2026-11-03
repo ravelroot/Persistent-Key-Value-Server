@@ -1,10 +1,12 @@
 import type {
   ApiToken,
   AuditEntry,
+  BulkDeleteResult,
   Checkpoint,
   Integrations,
   KeyExportItem,
   KeyImportResult,
+  KeyNamespaces,
   SavedQuery,
   TableImportResult,
   TokenCreated,
@@ -245,6 +247,9 @@ export const api = {
   webhookDeliveries: (id: string) => request<WebhookDelivery[]>('GET', `/api/webhooks/${encodeURIComponent(id)}/deliveries`),
 
   keysExport: (match: string) => download('/api/keys/export' + qs({ match }), 'arca-chaves.json'),
+  keyNamespaces: (sep = ':', limit = 12) => request<KeyNamespaces>('GET', '/api/keys/namespaces' + qs({ sep, limit })),
+  keysDeleteMatch: (match: string, dry_run: boolean) => request<BulkDeleteResult>('POST', '/api/keys/delete-match', { match, dry_run }),
+  auditExport: (format: 'csv' | 'json') => download('/api/audit/export' + qs({ format }), `arca-auditoria.${format}`),
   keysImport: (keys: KeyExportItem[], mode: 'overwrite' | 'skip') => request<KeyImportResult>('POST', '/api/keys/import', { keys, mode }),
   tableExport: (name: string, format: 'csv' | 'json') =>
     download(`/api/tables/${encodeURIComponent(name)}/export` + qs({ format }), `${name}.${format}`),

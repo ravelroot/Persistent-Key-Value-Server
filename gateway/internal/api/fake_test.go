@@ -260,6 +260,8 @@ func (f *fakeArca) exec(args []string) resp.Value {
 		return intv(1)
 	case "ARCA.SCANJSON":
 		return f.scan(args)
+	case "ARCA.NAMESPACES":
+		return f.namespaces(args)
 	case "ARCA.STATS":
 		return jsonv(f.stats())
 	case "ARCA.FLUSH":
@@ -315,6 +317,75 @@ func globMatch(pattern, s string) bool {
 		return s != "" && globMatch(pattern[1:], s[1:])
 	}
 	return s != "" && s[0] == pattern[0] && globMatch(pattern[1:], s[1:])
+}
+
+func (f *fakeArca) namespaces(args []string) resp.Value {
+	sep := ":"
+	limit := 50
+	excludes := []string{}
+	for i := 1; i+1 < len(args); i += 2 {
+		switch strings.ToUpper(args[i]) {
+		case "SEP":
+			sep = args[i+1]
+		case "LIMIT":
+			limit, _ = strconv.Atoi(args[i+1])
+		case "EXCLUDE":
+			excludes = append(excludes, args[i+1])
+		}
+	}
+	type group struct {
+		Prefix  string `json:"prefix"`
+		Keys    int    `json:"keys"`
+		Bytes   int    `json:"bytes"`
+		WithTTL int    `json:"with_ttl"`
+	}
+	groups := map[string]*group{}
+	total := 0
+	for k := range f.kv {
+		e, ok := f.live(k)
+		if !ok {
+			continue
+		}
+		skip := false
+		for _, ex := range excludes {
+			if strings.HasPrefix(k, ex) {
+				skip = true
+			}
+		}
+		if skip {
+			continue
+		}
+		prefix := ""
+		if i := strings.Index(k, sep); i >= 0 {
+			prefix = k[:i]
+		}
+		g := groups[prefix]
+		if g == nil {
+			g = &group{Prefix: prefix}
+			groups[prefix] = g
+		}
+		g.Keys++
+		g.Bytes += len(k) + len(e.value)
+		if !e.expire.IsZero() {
+			g.WithTTL++
+		}
+		total++
+	}
+	list := []group{}
+	for _, g := range groups {
+		list = append(list, *g)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Keys != list[j].Keys {
+			return list[i].Keys > list[j].Keys
+		}
+		return list[i].Prefix < list[j].Prefix
+	})
+	n := len(list)
+	if len(list) > limit {
+		list = list[:limit]
+	}
+	return jsonv(map[string]any{"separator": sep, "total_keys": total, "groups": n, "namespaces": list})
 }
 
 func (f *fakeArca) scan(args []string) resp.Value {

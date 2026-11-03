@@ -14,6 +14,7 @@ const actionLabel: Record<string, string> = {
   senha_alterada: 'trocou a senha',
   chave_gravada: 'gravou chave',
   chave_removida: 'apagou chave',
+  chaves_removidas: 'apagou chaves por padrão',
   ttl_definido: 'definiu TTL',
   ttl_removido: 'removeu TTL',
   linha_inserida: 'inseriu linha',
@@ -239,6 +240,19 @@ function UsersTab() {
 function AuditTab() {
   const { data, error, reload } = useAsync(() => api.audit(300), [], 10000)
   const [filter, setFilter] = useState('')
+  const [exporting, setExporting] = useState<'csv' | 'json' | null>(null)
+  const toast = useToast()
+  const exportAudit = async (format: 'csv' | 'json') => {
+    setExporting(format)
+    try {
+      const name = await api.auditExport(format)
+      toast.ok(`Auditoria exportada para ${name}.`)
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setExporting(null)
+    }
+  }
   const rows = useMemo(() => {
     const f = filter.trim().toLowerCase()
     if (!data) return []
@@ -254,6 +268,13 @@ function AuditTab() {
         <div className="search">
           <input aria-label="Filtrar auditoria" placeholder="Filtrar por e-mail, ação ou detalhe" value={filter} onChange={(e) => setFilter(e.target.value)} />
         </div>
+        <span className="spacer" />
+        <Button icon="download" busy={exporting === 'csv'} disabled={exporting !== null} onClick={() => exportAudit('csv')} title="Baixa os últimos 1 000 registros em CSV">
+          Exportar CSV
+        </Button>
+        <Button icon="download" busy={exporting === 'json'} disabled={exporting !== null} onClick={() => exportAudit('json')} title="Baixa os últimos 1 000 registros em JSON">
+          JSON
+        </Button>
       </div>
       <Panel flush>
         {rows.length === 0 ? (

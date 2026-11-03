@@ -5,7 +5,7 @@ import { Badge, Button, ConfirmButton, Drawer, Empty, ErrorBox, Field, Loading, 
 import { readFile } from '../csv'
 import { bytes, num, ttl } from '../format'
 import { useSession, useToast } from '../state'
-import type { KeyExportItem, KeyItem, KeyValue } from '../types'
+import type { BulkDeleteResult, KeyExportItem, KeyItem, KeyNamespaces, KeyValue } from '../types'
 
 function prettyJSON(v: string): string | null {
   const t = v.trim()
@@ -74,6 +74,12 @@ export function Keys() {
   const [importErr, setImportErr] = useState<string | null>(null)
   const [importBusy, setImportBusy] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [spaces, setSpaces] = useState<KeyNamespaces | null>(null)
+  const [spacesErr, setSpacesErr] = useState<string | null>(null)
+  const [sep, setSep] = useState(':')
+  const [purge, setPurge] = useState<BulkDeleteResult | null>(null)
+  const [purgeOpen, setPurgeOpen] = useState(false)
+  const [purgeBusy, setPurgeBusy] = useState(false)
 
   const load = useCallback(async (match: string, from: string, append: boolean) => {
     setLoading(true)
@@ -100,6 +106,54 @@ export function Keys() {
   useEffect(() => {
     load(query, '0', false)
   }, [query, load])
+
+  const loadSpaces = useCallback(async (separator: string) => {
+    setSpacesErr(null)
+    try {
+      setSpaces(await api.keyNamespaces(separator, 12))
+    } catch (e) {
+      setSpacesErr(errorMessage(e))
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSpaces(sep)
+  }, [sep, loadSpaces])
+
+  const pickSpace = (prefix: string) => {
+    const p = prefix ? `${prefix}${sep}*` : '*'
+    setPattern(p)
+    setQuery(p)
+  }
+
+  const openPurge = async () => {
+    setPurge(null)
+    setPurgeOpen(true)
+    setPurgeBusy(true)
+    try {
+      setPurge(await api.keysDeleteMatch(query, true))
+    } catch (e) {
+      toast.error(e)
+      setPurgeOpen(false)
+    } finally {
+      setPurgeBusy(false)
+    }
+  }
+
+  const runPurge = async () => {
+    setPurgeBusy(true)
+    try {
+      const r = await api.keysDeleteMatch(query, false)
+      toast.ok(`${num(r.deleted ?? 0)} ${r.deleted === 1 ? 'chave apagada' : 'chaves apagadas'} com ${query}.`)
+      setPurgeOpen(false)
+      load(query, '0', false)
+      loadSpaces(sep)
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setPurgeBusy(false)
+    }
+  }
 
   const search = (e: FormEvent) => {
     e.preventDefault()
@@ -231,6 +285,11 @@ export function Keys() {
         <Button icon="download" busy={exporting} onClick={exportKeys} title={`Baixa um JSON com as chaves que casam com ${query}`}>
           Exportar
         </Button>
+        {writable && query !== '*' ? (
+          <Button icon="trash" onClick={openPurge} title={`Apaga todas as chaves que casam com ${query}, depois de mostrar quantas são`}>
+            Apagar padrão
+          </Button>
+        ) : null}
         {writable ? (
           <Button icon="upload" onClick={() => { setImporting(null); setImportErr(null); setImportOpen(true) }}>
             Importar
@@ -244,6 +303,59 @@ export function Keys() {
       </form>
 
       {error ? <ErrorBox message={error} onRetry={() => load(query, '0', false)} /> : null}
+
+      <Panel
+        title={<>Prefixos <span className="muted">· {spaces ? `${num(spaces.total_keys)} chaves em ${num(spaces.groups)} ${spaces.groups === 1 ? 'grupo' : 'grupos'}` : 'contando'}</span></>}
+        actions={
+          <>
+            <label className="ns-sep">
+              <span>Separador</span>
+              <select aria-label="Separador de prefixo" value={sep} onChange={(e) => setSep(e.target.value)}>
+                {[':', '.', '/', '_', '-'].map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button small icon="refresh" onClick={() => loadSpaces(sep)} title="Contar de novo">
+              Atualizar
+            </Button>
+          </>
+        }
+      >
+        {spacesErr ? (
+          <ErrorBox message={spacesErr} onRetry={() => loadSpaces(sep)} />
+        ) : !spaces ? (
+          <Loading />
+        ) : spaces.namespaces.length === 0 ? (
+          <Empty title="Nenhuma chave ainda">Crie uma chave ou importe um arquivo para ver os prefixos aqui.</Empty>
+        ) : (
+          <ul className="ns-list">
+            {spaces.namespaces.map((n) => {
+              const share = spaces.total_keys ? n.keys / spaces.total_keys : 0
+              const active = query === (n.prefix ? `${n.prefix}${sep}*` : '*')
+              return (
+                <li key={n.prefix || '\u0000'}>
+                  <button type="button" className={`ns-row${active ? ' is-active' : ''}`} onClick={() => pickSpace(n.prefix)} title={n.prefix ? `Buscar ${n.prefix}${sep}*` : 'Chaves sem o separador'}>
+                    <span className="ns-name mono">{n.prefix ? `${n.prefix}${sep}` : <i>sem prefixo</i>}</span>
+                    <span className="ns-bar" aria-hidden="true">
+                      <span style={{ width: `${Math.max(share * 100, 1.5)}%` }} />
+                    </span>
+                    <span className="ns-num">{num(n.keys)}</span>
+                    <span className="ns-pct muted">{(share * 100).toFixed(share < 0.1 ? 1 : 0)}%</span>
+                    <span className="ns-bytes muted">{bytes(n.bytes)}</span>
+                    <span className="ns-ttl muted">{n.with_ttl ? `${num(n.with_ttl)} com TTL` : 'sem TTL'}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {spaces && spaces.groups > spaces.namespaces.length ? (
+          <p className="ns-more muted">Mostrando os {num(spaces.namespaces.length)} maiores de {num(spaces.groups)} grupos.</p>
+        ) : null}
+      </Panel>
 
       <Panel flush title={<>Chaves <span className="muted">· {num(keys.length)}{done ? '' : '+'} com {query}</span></>}>
         {keys.length === 0 && loading ? (
@@ -284,6 +396,51 @@ export function Keys() {
           </div>
         ) : null}
       </Panel>
+
+      <Drawer
+        open={purgeOpen}
+        title="Apagar por padrão"
+        subtitle={<span className="mono">{query}</span>}
+        onClose={() => setPurgeOpen(false)}
+        footer={
+          <>
+            <Button variant="quiet" onClick={() => setPurgeOpen(false)}>
+              Cancelar
+            </Button>
+            <span className="spacer" />
+            <ConfirmButton
+              label={purge?.matched ? `Apagar ${num(purge.matched)} ${purge.matched === 1 ? 'chave' : 'chaves'}` : 'Apagar'}
+              confirmLabel="Confirmar remoção"
+              onConfirm={runPurge}
+              busy={purgeBusy}
+              disabled={!purge?.matched}
+              small={false}
+            />
+          </>
+        }
+      >
+        {!purge ? (
+          <Loading />
+        ) : !purge.matched ? (
+          <Empty title="Nenhuma chave com esse padrão">Nada será apagado.</Empty>
+        ) : (
+          <div className="form">
+            <div className="import-summary">
+              <strong>
+                {num(purge.matched)} {purge.matched === 1 ? 'chave casa' : 'chaves casam'} com o padrão
+                {purge.truncated ? ' (limite de 50 000 por vez)' : ''}
+              </strong>
+              <span>A remoção não pode ser desfeita. Exporte antes se quiser guardar uma cópia. As chaves do painel nunca entram na conta.</span>
+              <ul className="import-preview mono">
+                {(purge.sample ?? []).map((k) => (
+                  <li key={k}>{k}</li>
+                ))}
+                {purge.matched > (purge.sample?.length ?? 0) ? <li className="muted">e mais {num(purge.matched - (purge.sample?.length ?? 0))}</li> : null}
+              </ul>
+            </div>
+          </div>
+        )}
+      </Drawer>
 
       <Drawer
         open={importOpen}

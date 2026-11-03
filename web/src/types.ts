@@ -334,3 +334,26 @@ export interface Integrations {
   metrics_url: string
   requires_password: boolean
 }
+
+export interface KeyNamespace {
+  prefix: string
+  keys: number
+  bytes: number
+  with_ttl: number
+}
+
+export interface KeyNamespaces {
+  separator: string
+  total_keys: number
+  total_bytes: number
+  groups: number
+  namespaces: KeyNamespace[]
+}
+
+export interface BulkDeleteResult {
+  match: string
+  matched?: number
+  deleted?: number
+  truncated: boolean
+  sample?: string[]
+}

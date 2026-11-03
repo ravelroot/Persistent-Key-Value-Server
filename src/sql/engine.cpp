@@ -411,9 +411,86 @@ Value Eval(const Expr* e, const std::vector<Value>& row) {
         double m = std::pow(10.0, static_cast<double>(digits));
         return Value::Real(std::round(x * m) / m);
       }
-      if (f == "coalesce") {
+      if (f == "coalesce" || f == "ifnull") {
         for (const auto& a : args) {
           if (!a.is_null()) return a;
+        }
+      }
+      if ((f == "trim" || f == "ltrim" || f == "rtrim") && !args.empty() && !args[0].is_null()) {
+        std::string v = args[0].ToString();
+        std::string chars = args.size() > 1 && !args[1].is_null() ? args[1].ToString() : std::string(" \t\r\n");
+        size_t b = 0;
+        size_t en = v.size();
+        if (f != "rtrim") {
+          while (b < en && chars.find(v[b]) != std::string::npos) ++b;
+        }
+        if (f != "ltrim") {
+          while (en > b && chars.find(v[en - 1]) != std::string::npos) --en;
+        }
+        return Value::Text(v.substr(b, en - b));
+      }
+      if ((f == "substr" || f == "substring") && args.size() >= 2 && !args[0].is_null() && args[1].type == Type::kInt) {
+        std::string v = args[0].ToString();
+        int64_t len = static_cast<int64_t>(v.size());
+        int64_t start = args[1].i;
+        if (start < 0) start = len + start + 1;
+        if (start < 1) start = 1;
+        int64_t count = len;
+        if (args.size() > 2) {
+          if (args[2].type != Type::kInt) return Value::Null();
+          count = std::max<int64_t>(0, args[2].i);
+        }
+        if (start > len) return Value::Text("");
+        return Value::Text(v.substr(static_cast<size_t>(start - 1), static_cast<size_t>(std::min(count, len - start + 1))));
+      }
+      if (f == "replace" && args.size() == 3 && !args[0].is_null() && !args[1].is_null() && !args[2].is_null()) {
+        std::string v = args[0].ToString();
+        std::string from = args[1].ToString();
+        std::string to = args[2].ToString();
+        if (from.empty()) return Value::Text(v);
+        std::string res;
+        size_t pos = 0;
+        for (size_t hit; (hit = v.find(from, pos)) != std::string::npos; pos = hit + from.size()) {
+          res.append(v, pos, hit - pos);
+          res += to;
+        }
+        res.append(v, pos, std::string::npos);
+        return Value::Text(res);
+      }
+      if (f == "concat") {
+        std::string res;
+        for (const auto& a : args) {
+          if (!a.is_null()) res += a.ToString();
+        }
+        return Value::Text(res);
+      }
+      if (f == "instr" && args.size() == 2 && !args[0].is_null() && !args[1].is_null()) {
+        size_t pos = args[0].ToString().find(args[1].ToString());
+        return Value::Int(pos == std::string::npos ? 0 : static_cast<int64_t>(pos) + 1);
+      }
+      if (f == "nullif" && args.size() == 2) {
+        if (!args[0].is_null() && !args[1].is_null() && Compare(args[0], args[1]) == 0) return Value::Null();
+        return args[0];
+      }
+      if ((f == "floor" || f == "ceil") && args.size() == 1) {
+        if (args[0].type == Type::kInt) return args[0];
+        if (args[0].type == Type::kReal) {
+          double r = f == "floor" ? std::floor(args[0].d) : std::ceil(args[0].d);
+          return Value::Int(static_cast<int64_t>(r));
+        }
+      }
+      if (f == "typeof" && args.size() == 1) {
+        switch (args[0].type) {
+          case Type::kInt:
+            return Value::Text("int");
+          case Type::kReal:
+            return Value::Text("real");
+          case Type::kText:
+            return Value::Text("text");
+          case Type::kBool:
+            return Value::Text("bool");
+          default:
+            return Value::Text("null");
         }
       }
       return Value::Null();
@@ -425,8 +502,10 @@ Value Eval(const Expr* e, const std::vector<Value>& row) {
 Status ValidateFunctions(const Expr* e) {
   if (e == nullptr) return Status::OK();
   if (e->kind == Expr::Kind::kFunction) {
-    static const std::set<std::string> known = {"count", "sum",  "avg", "min",   "max",
-                                                "lower", "upper", "length", "abs", "round", "coalesce"};
+    static const std::set<std::string> known = {"count",  "sum",    "avg",    "min",     "max",       "lower",
+                                                "upper",  "length", "abs",    "round",   "coalesce",  "ifnull",
+                                                "trim",   "ltrim",  "rtrim",  "substr",  "substring", "replace",
+                                                "concat", "instr",  "nullif", "floor",   "ceil",      "typeof"};
     if (known.count(e->name) == 0) return Status::InvalidArgument("função desconhecida: " + e->name);
   }
   for (const auto& a : e->args) {

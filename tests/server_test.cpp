@@ -206,3 +206,50 @@ TEST(ServidorCheckpointsEVerificacao) {
   CHECK(r.Call(c, {"ARCA.VERIFY"}).type == T::kError);
   r.Call(c, {"DISCARD"});
 }
+
+TEST(ServidorExpireCondicionalLcsENamespaces130) {
+  Running r;
+  resp::Client c;
+  CHECK_OK(c.Connect("127.0.0.1", r.port));
+  using T = resp::Value::Type;
+  r.Call(c, {"SET", "sessao:1", "a"});
+  CHECK_EQ(r.Call(c, {"EXPIRE", "sessao:1", "100", "XX"}).integer, int64_t(0));
+  CHECK_EQ(r.Call(c, {"EXPIRE", "sessao:1", "100", "GT"}).integer, int64_t(0));
+  CHECK_EQ(r.Call(c, {"EXPIRE", "sessao:1", "100", "NX"}).integer, int64_t(1));
+  CHECK_EQ(r.Call(c, {"EXPIRE", "sessao:1", "200", "NX"}).integer, int64_t(0));
+  CHECK_EQ(r.Call(c, {"EXPIRE", "sessao:1", "50", "GT"}).integer, int64_t(0));
+  CHECK_EQ(r.Call(c, {"EXPIRE", "sessao:1", "300", "GT"}).integer, int64_t(1));
+  CHECK(r.Call(c, {"TTL", "sessao:1"}).integer > 200);
+  CHECK_EQ(r.Call(c, {"EXPIRE", "sessao:1", "400", "LT"}).integer, int64_t(0));
+  CHECK_EQ(r.Call(c, {"PEXPIRE", "sessao:1", "60000", "LT"}).integer, int64_t(1));
+  CHECK(r.Call(c, {"TTL", "sessao:1"}).integer <= 60);
+  CHECK(r.Call(c, {"EXPIRE", "sessao:1", "10", "NX", "XX"}).type == T::kError);
+  CHECK(r.Call(c, {"EXPIRE", "sessao:1", "10", "GT", "LT"}).type == T::kError);
+  CHECK(r.Call(c, {"EXPIRE", "sessao:1", "10", "OUTRA"}).type == T::kError);
+
+  r.Call(c, {"SET", "s1", "ohmytext"});
+  r.Call(c, {"SET", "s2", "mynewtext"});
+  CHECK_EQ(r.Call(c, {"LCS", "s1", "s2"}).str, std::string("mytext"));
+  CHECK_EQ(r.Call(c, {"LCS", "s1", "s2", "LEN"}).integer, int64_t(6));
+  CHECK_EQ(r.Call(c, {"LCS", "s1", "nao-existe"}).str, std::string(""));
+  CHECK(r.Call(c, {"LCS", "s1", "s2", "IDX"}).type == T::kError);
+
+  r.Call(c, {"SET", "sessao:2", "bb", "EX", "100"});
+  r.Call(c, {"SET", "produto:1", "ccc"});
+  r.Call(c, {"SET", "sistema:x", "d"});
+  auto ns = r.Call(c, {"ARCA.NAMESPACES"});
+  CHECK(ns.type == T::kBulk);
+  CHECK(ns.str.find("\"prefix\":\"sessao\",\"keys\":2") != std::string::npos);
+  CHECK(ns.str.find("\"with_ttl\":2") != std::string::npos);
+  CHECK(ns.str.find("\"prefix\":\"produto\",\"keys\":1") != std::string::npos);
+  CHECK(ns.str.find("\"prefix\":\"\",\"keys\":2") != std::string::npos);
+  CHECK(ns.str.find("\"total_keys\":6") != std::string::npos);
+  auto ex = r.Call(c, {"ARCA.NAMESPACES", "EXCLUDE", "sistema:", "LIMIT", "2"});
+  CHECK(ex.str.find("\"total_keys\":5") != std::string::npos);
+  CHECK(ex.str.find("\"prefix\":\"sessao\"") != std::string::npos);
+  CHECK(ex.str.find("\"prefix\":\"produto\"") == std::string::npos);
+  auto dot = r.Call(c, {"ARCA.NAMESPACES", "SEP", "_"});
+  CHECK(dot.str.find("\"separator\":\"_\"") != std::string::npos);
+  CHECK(r.Call(c, {"ARCA.NAMESPACES", "LIMIT", "0"}).type == T::kError);
+  CHECK(r.Call(c, {"ARCA.NAMESPACES", "OUTRO"}).type == T::kError);
+}

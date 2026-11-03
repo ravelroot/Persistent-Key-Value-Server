@@ -592,6 +592,29 @@ struct Commands {
       resp::AppendError(out, "ERR o valor não é um inteiro ou está fora do intervalo");
       return;
     }
+    bool nx = false;
+    bool xx = false;
+    bool gt = false;
+    bool lt = false;
+    for (size_t i = 3; i < a.size(); ++i) {
+      std::string opt = Upper(a[i]);
+      if (opt == "NX") {
+        nx = true;
+      } else if (opt == "XX") {
+        xx = true;
+      } else if (opt == "GT") {
+        gt = true;
+      } else if (opt == "LT") {
+        lt = true;
+      } else {
+        resp::AppendError(out, "ERR opção desconhecida: " + a[i]);
+        return;
+      }
+    }
+    if ((nx && (xx || gt || lt)) || (gt && lt)) {
+      resp::AppendError(out, "ERR NX não combina com XX, GT ou LT, e GT não combina com LT");
+      return;
+    }
     int64_t expire_ms = cmd == "EXPIRE"     ? NowMs() + n * 1000
                         : cmd == "PEXPIRE"  ? NowMs() + n
                         : cmd == "EXPIREAT" ? n * 1000
@@ -600,6 +623,12 @@ struct Commands {
     KvRecord rec;
     if (!CheckRead(s, ReadKv(s, c, a[1], &rec), out)) return;
     if (!rec.exists) {
+      resp::AppendInteger(out, 0);
+      return;
+    }
+    bool has_ttl = rec.expire_ms > 0;
+    if ((nx && has_ttl) || (xx && !has_ttl) || (gt && (!has_ttl || expire_ms <= rec.expire_ms)) ||
+        (lt && has_ttl && expire_ms >= rec.expire_ms)) {
       resp::AppendInteger(out, 0);
       return;
     }
@@ -1203,10 +1232,140 @@ struct Commands {
       resp::AppendNull(out);
       return;
     }
-    // chave interna (prefixo + chave + 8 bytes de sequência/tipo) + valor codificado + entrada da skip list/bloco
     int64_t bytes = static_cast<int64_t>(1 + a[2].size() + 8 + 1 + (rec.expire_ms > 0 ? 8 : 0) + rec.value.size() + 24);
     if (rec.expire_ms > 0) bytes += static_cast<int64_t>(1 + 8 + a[2].size() + 8);
     resp::AppendInteger(out, bytes);
+  }
+
+  static void Lcs(Server& s, Connection& c, Args& a, std::string* out) {
+    bool len_only = false;
+    for (size_t i = 3; i < a.size(); ++i) {
+      std::string opt = Upper(a[i]);
+      if (opt == "LEN") {
+        len_only = true;
+      } else {
+        resp::AppendError(out, "ERR opção não suportada: " + a[i] + " (use LCS chave1 chave2 [LEN])");
+        return;
+      }
+    }
+    KvRecord x;
+    KvRecord y;
+    if (!CheckRead(s, ReadKv(s, c, a[1], &x), out)) return;
+    if (!CheckRead(s, ReadKv(s, c, a[2], &y), out)) return;
+    const std::string& sa = x.value;
+    const std::string& sb = y.value;
+    size_t n = sa.size();
+    size_t m = sb.size();
+    if (n > 0 && m > 0 && (n + 1) > (size_t{16} << 20) / (m + 1)) {
+      resp::AppendError(out, "ERR os valores são grandes demais para o LCS (limite de 16 milhões de células)");
+      return;
+    }
+    std::vector<uint32_t> dp((n + 1) * (m + 1), 0);
+    auto at = [&](size_t i, size_t j) -> uint32_t& { return dp[i * (m + 1) + j]; };
+    for (size_t i = 1; i <= n; ++i) {
+      for (size_t j = 1; j <= m; ++j) {
+        at(i, j) = sa[i - 1] == sb[j - 1] ? at(i - 1, j - 1) + 1 : std::max(at(i - 1, j), at(i, j - 1));
+      }
+    }
+    if (len_only) {
+      resp::AppendInteger(out, static_cast<int64_t>(at(n, m)));
+      return;
+    }
+    std::string result(at(n, m), '\0');
+    size_t k = result.size();
+    size_t i = n;
+    size_t j = m;
+    while (i > 0 && j > 0) {
+      if (sa[i - 1] == sb[j - 1]) {
+        result[--k] = sa[i - 1];
+        --i;
+        --j;
+      } else if (at(i - 1, j) >= at(i, j - 1)) {
+        --i;
+      } else {
+        --j;
+      }
+    }
+    resp::AppendBulk(out, result);
+  }
+
+  static void Namespaces(Server& s, Connection& c, Args& a, std::string* out) {
+    std::string sep = ":";
+    int64_t limit = 50;
+    std::vector<std::string> excludes;
+    for (size_t i = 1; i < a.size(); ++i) {
+      std::string opt = Upper(a[i]);
+      if (opt == "SEP" && i + 1 < a.size()) {
+        sep = a[++i];
+        if (sep.empty() || sep.size() > 8) {
+          resp::AppendError(out, "ERR o separador precisa ter de 1 a 8 caracteres");
+          return;
+        }
+      } else if (opt == "LIMIT" && i + 1 < a.size()) {
+        if (!ParseInt64(a[++i], &limit) || limit <= 0) {
+          resp::AppendError(out, "ERR LIMIT inválido");
+          return;
+        }
+        limit = std::min<int64_t>(limit, 1000);
+      } else if (opt == "EXCLUDE" && i + 1 < a.size()) {
+        excludes.push_back(a[++i]);
+      } else {
+        resp::AppendError(out, "ERR use ARCA.NAMESPACES [SEP separador] [LIMIT n] [EXCLUDE prefixo]");
+        return;
+      }
+    }
+    struct Group {
+      int64_t keys = 0;
+      int64_t bytes = 0;
+      int64_t with_ttl = 0;
+    };
+    std::unordered_map<std::string, Group> groups;
+    ReadOptions ro;
+    ro.snapshot = c.session.snapshot.get();
+    ro.fill_cache = false;
+    auto it = s.db_->NewIterator(ro);
+    int64_t now = NowMs();
+    int64_t total = 0;
+    int64_t total_bytes = 0;
+    for (it->Seek(KvKey("")); it->Valid(); it->Next()) {
+      std::string_view k = it->key();
+      if (k.empty() || k[0] != '\x01') break;
+      std::string_view user = k.substr(1);
+      bool skip = false;
+      for (const auto& ex : excludes) {
+        if (user.substr(0, ex.size()) == ex) skip = true;
+      }
+      if (skip) continue;
+      KvRecord rec;
+      if (!DecodeKv(it->value(), &rec)) continue;
+      if (rec.expire_ms > 0 && rec.expire_ms <= now) continue;
+      size_t pos = user.find(sep);
+      std::string prefix = pos == std::string_view::npos ? std::string() : std::string(user.substr(0, pos));
+      Group& g = groups[prefix];
+      int64_t bytes = static_cast<int64_t>(user.size() + rec.value.size());
+      g.keys += 1;
+      g.bytes += bytes;
+      g.with_ttl += rec.expire_ms > 0 ? 1 : 0;
+      total += 1;
+      total_bytes += bytes;
+    }
+    std::vector<std::pair<std::string, Group>> sorted(groups.begin(), groups.end());
+    std::sort(sorted.begin(), sorted.end(), [](const auto& l, const auto& r) {
+      if (l.second.keys != r.second.keys) return l.second.keys > r.second.keys;
+      return l.first < r.first;
+    });
+    std::string json = "{\"separator\":" + JsonString(sep) + ",\"total_keys\":" + std::to_string(total) +
+                       ",\"total_bytes\":" + std::to_string(total_bytes) + ",\"groups\":" +
+                       std::to_string(sorted.size()) + ",\"namespaces\":[";
+    size_t shown = std::min<size_t>(sorted.size(), static_cast<size_t>(limit));
+    for (size_t i = 0; i < shown; ++i) {
+      const auto& [prefix, g] = sorted[i];
+      if (i > 0) json += ",";
+      json += "{\"prefix\":" + JsonString(prefix) + ",\"keys\":" + std::to_string(g.keys) +
+              ",\"bytes\":" + std::to_string(g.bytes) + ",\"with_ttl\":" + std::to_string(g.with_ttl) + "}";
+    }
+    json += "]}";
+    resp::AppendBulk(out, json);
   }
 
   static void Checkpoints(Server& s, Connection&, Args& a, std::string* out) {
@@ -1333,10 +1492,10 @@ const std::unordered_map<std::string, Server::CommandSpec>& CommandTable() {
         {"INCRBYFLOAT", 3, kWrite, Commands::IncrByFloat},
         {"APPEND", 3, kWrite, Commands::Append},
         {"STRLEN", 2, kRead, Commands::StrLen},
-        {"EXPIRE", 3, kWrite, Commands::Expire},
-        {"PEXPIRE", 3, kWrite, Commands::Expire},
-        {"EXPIREAT", 3, kWrite, Commands::Expire},
-        {"PEXPIREAT", 3, kWrite, Commands::Expire},
+        {"EXPIRE", -3, kWrite, Commands::Expire},
+        {"PEXPIRE", -3, kWrite, Commands::Expire},
+        {"EXPIREAT", -3, kWrite, Commands::Expire},
+        {"PEXPIREAT", -3, kWrite, Commands::Expire},
         {"TTL", 2, kRead, Commands::Ttl},
         {"PTTL", 2, kRead, Commands::Ttl},
         {"PERSIST", 2, kWrite, Commands::Persist},
@@ -1381,6 +1540,8 @@ const std::unordered_map<std::string, Server::CommandSpec>& CommandTable() {
         {"PEXPIRETIME", 2, kRead, Commands::ExpireTime},
         {"MSETNX", -3, kWrite, Commands::MSetNx},
         {"MEMORY", -2, 0, Commands::Memory},
+        {"LCS", -3, kRead | kHeavy, Commands::Lcs},
+        {"ARCA.NAMESPACES", -1, kRead | kHeavy, Commands::Namespaces},
     };
     std::unordered_map<std::string, Server::CommandSpec> m;
     for (const auto& spec : specs) m.emplace(spec.name, spec);

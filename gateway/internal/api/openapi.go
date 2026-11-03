@@ -74,6 +74,9 @@ var routeDocs = []opDoc{
 	{"get", "/api/storage/checkpoints", "Armazenamento", "Checkpoints guardados ao lado da pasta de dados", "reader", "", "CheckpointList", "200", nil},
 	{"delete", "/api/storage/checkpoints/{name}", "Armazenamento", "Apaga um checkpoint", "admin", "", "", "204", nil},
 	{"post", "/api/storage/verify", "Armazenamento", "Confere o checksum de todas as SSTables vivas", "operator", "", "VerifyResult", "200", nil},
+	{"get", "/api/keys/namespaces", "Chaves", "Agrupa as chaves pelo prefixo antes do separador, com quantidade, bytes e TTL", "reader", "", "NamespaceList", "200", []string{"sep", "limit"}},
+	{"post", "/api/keys/delete-match", "Chaves", "Apaga todas as chaves de um padrão (até 50 000), com prévia em dry_run", "operator", "BulkDelete", "BulkDeleteResult", "200", nil},
+	{"get", "/api/audit/export", "Administração", "Exporta a auditoria em CSV ou JSON (anexo, até 10 000 registros)", "admin", "", "", "200", []string{"format", "limit"}},
 }
 
 func obj(props map[string]any, required ...string) map[string]any {
@@ -154,6 +157,9 @@ func schemas() map[string]any {
 		"QueryList":         arr(ref("Query")),
 		"QueryCreate":       obj(map[string]any{"name": str(), "query": str(), "shared": boolean()}, "name", "query"),
 		"CheckpointList":    arr(obj(map[string]any{"name": str(), "created_ms": integer(), "bytes": integer(), "files": integer()})),
+		"NamespaceList":     obj(map[string]any{"separator": str(), "total_keys": integer(), "total_bytes": integer(), "groups": integer(), "namespaces": arr(obj(map[string]any{"prefix": str(), "keys": integer(), "bytes": integer(), "with_ttl": integer()}))}),
+		"BulkDelete":        obj(map[string]any{"match": str(), "dry_run": boolean()}, "match"),
+		"BulkDeleteResult":  obj(map[string]any{"match": str(), "matched": integer(), "deleted": integer(), "truncated": boolean(), "sample": arr(str())}),
 		"VerifyResult":      obj(map[string]any{"files": integer(), "bytes": integer(), "ok": integer(), "corrupt": arr(obj(map[string]any{"file": str(), "error": str()})), "ms": number()}),
 	}
 }
@@ -198,7 +204,7 @@ func buildOpenAPI() map[string]any {
 			ok["content"] = map[string]any{"text/event-stream": map[string]any{"schema": str()}}
 		case "/metrics":
 			ok["content"] = map[string]any{"text/plain": map[string]any{"schema": str()}}
-		case "/api/tables/{name}/export":
+		case "/api/tables/{name}/export", "/api/audit/export":
 			ok["content"] = map[string]any{"text/csv": map[string]any{"schema": str()}, "application/json": map[string]any{"schema": arr(map[string]any{"type": "object"})}}
 		}
 		op["responses"] = map[string]any{d.status: ok, "400": errResp, "401": errResp, "403": errResp, "503": errResp}

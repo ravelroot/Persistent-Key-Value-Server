@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"arca/gateway/internal/store"
 )
 
 func TestAPITokens(t *testing.T) {
@@ -438,7 +440,100 @@ func TestCheckpointsVerifyIntegrations(t *testing.T) {
 			t.Fatalf("rota %s ausente da OpenAPI", p)
 		}
 	}
-	if doc["info"].(map[string]any)["version"] != "1.2.2" {
+	if doc["info"].(map[string]any)["version"] != "1.3.0" {
 		t.Fatalf("versão da OpenAPI: %v", doc["info"])
+	}
+}
+
+func TestNamespacesBulkDeleteAuditExport(t *testing.T) {
+	e := setup(t)
+	op := e.login("operador@arca.dev")
+	for _, k := range []string{"remessa13:1", "remessa13:2", "remessa13:3", "avulso13:1"} {
+		expect(t, e.call("PUT", "/api/keys/value", op, map[string]any{"key": k, "value": "x"}), 204)
+	}
+	r := e.call("GET", "/api/keys/namespaces", e.login("leitura@arca.dev"), nil)
+	expect(t, r, 200)
+	var ns struct {
+		Separator  string `json:"separator"`
+		Namespaces []struct {
+			Prefix string `json:"prefix"`
+			Keys   int    `json:"keys"`
+		} `json:"namespaces"`
+	}
+	r.json(t, &ns)
+	found := map[string]int{}
+	for _, n := range ns.Namespaces {
+		found[n.Prefix] = n.Keys
+		if n.Prefix == store.SystemPrefix {
+			t.Fatalf("chaves do painel apareceram nos prefixos: %s", r.body)
+		}
+	}
+	if ns.Separator != ":" || found["remessa13"] != 3 || found["avulso13"] != 1 {
+		t.Fatalf("prefixos inesperados: %s", r.body)
+	}
+	expect(t, e.call("GET", "/api/keys/namespaces?sep=a%20b", op, nil), 400)
+
+	expect(t, e.call("POST", "/api/keys/delete-match", e.login("leitura@arca.dev"), map[string]any{"match": "remessa13:*"}), 403)
+	expect(t, e.call("POST", "/api/keys/delete-match", op, map[string]any{"match": "*"}), 400)
+	expect(t, e.call("POST", "/api/keys/delete-match", op, map[string]any{"match": store.SystemPrefix + ":*", "dry_run": true}), 200)
+	r = e.call("POST", "/api/keys/delete-match", op, map[string]any{"match": "remessa13:*", "dry_run": true})
+	expect(t, r, 200)
+	var dry struct {
+		Matched int      `json:"matched"`
+		Sample  []string `json:"sample"`
+	}
+	r.json(t, &dry)
+	if dry.Matched != 3 || len(dry.Sample) != 3 {
+		t.Fatalf("prévia inesperada: %s", r.body)
+	}
+	e.fake.mu.Lock()
+	before := 0
+	for k := range e.fake.kv {
+		if strings.HasPrefix(k, store.SystemPrefix+":") {
+			before++
+		}
+	}
+	e.fake.mu.Unlock()
+	r = e.call("POST", "/api/keys/delete-match", op, map[string]any{"match": store.SystemPrefix + ":*"})
+	expect(t, r, 200)
+	e.fake.mu.Lock()
+	after := 0
+	for k := range e.fake.kv {
+		if strings.HasPrefix(k, store.SystemPrefix+":") {
+			after++
+		}
+	}
+	e.fake.mu.Unlock()
+	if before != after {
+		t.Fatal("a remoção por padrão apagou chaves do painel")
+	}
+	r = e.call("POST", "/api/keys/delete-match", op, map[string]any{"match": "remessa13:*"})
+	expect(t, r, 200)
+	var done struct {
+		Deleted int `json:"deleted"`
+	}
+	r.json(t, &done)
+	if done.Deleted != 3 {
+		t.Fatalf("remoção inesperada: %s", r.body)
+	}
+	expect(t, e.call("GET", "/api/keys/value?key=remessa13:1", op, nil), 404)
+	expect(t, e.call("GET", "/api/keys/value?key=avulso13:1", op, nil), 200)
+
+	admin := e.login("admin@arca.dev")
+	expect(t, e.call("GET", "/api/audit/export", op, nil), 403)
+	r = e.call("GET", "/api/audit/export", admin, nil)
+	expect(t, r, 200)
+	if !strings.Contains(r.header.Get("Content-Disposition"), "arca-auditoria-") || !strings.HasPrefix(string(r.body), "id,data,email,acao,detalhe") {
+		t.Fatalf("CSV de auditoria inesperado: %s", r.body)
+	}
+	if !strings.Contains(string(r.body), "chaves_removidas") || !strings.Contains(string(r.body), "remessa13:* (3 chaves)") {
+		t.Fatalf("auditoria sem a remoção por padrão: %s", r.body)
+	}
+	r = e.call("GET", "/api/audit/export?format=json", admin, nil)
+	expect(t, r, 200)
+	var entries []store.AuditEntry
+	r.json(t, &entries)
+	if len(entries) == 0 {
+		t.Fatal("auditoria em JSON vazia")
 	}
 }

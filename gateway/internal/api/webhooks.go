@@ -40,13 +40,13 @@ var webhookEvents = []webhookEvent{
 	{"auth.login", "Entrada no painel"},
 }
 
-// auditEvents liga as ações gravadas na auditoria aos eventos de webhook.
 var auditEvents = map[string]string{
 	"chave_gravada":       "key.write",
 	"ttl_definido":        "key.write",
 	"ttl_removido":        "key.write",
 	"chaves_importadas":   "key.write",
 	"chave_removida":      "key.delete",
+	"chaves_removidas":    "key.delete",
 	"linha_inserida":      "table.write",
 	"linha_alterada":      "table.write",
 	"linha_removida":      "table.write",

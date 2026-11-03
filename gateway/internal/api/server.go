@@ -24,7 +24,7 @@ import (
 )
 
 // Version é a versão do gateway, exibida no OpenAPI, em /api/integrations e nos webhooks.
-const Version = "1.2.2"
+const Version = "1.3.0"
 
 type Server struct {
 	cfg    config.Config
@@ -128,6 +128,9 @@ func (s *Server) routes() {
 	m.Handle("POST /api/webhooks/{id}/test", s.auth(auth.RoleAdmin, s.handleWebhookTest))
 	m.Handle("GET /api/webhooks/{id}/deliveries", s.auth(auth.RoleAdmin, s.handleWebhookDeliveries))
 
+	m.Handle("GET /api/keys/namespaces", s.auth(auth.RoleReader, s.handleKeyNamespaces))
+	m.Handle("POST /api/keys/delete-match", s.auth(auth.RoleOperator, s.handleKeysDeleteMatch))
+	m.Handle("GET /api/audit/export", s.auth(auth.RoleAdmin, s.handleAuditExport))
 	m.Handle("GET /api/keys/export", s.auth(auth.RoleReader, s.handleKeysExport))
 	m.Handle("POST /api/keys/import", s.auth(auth.RoleOperator, s.handleKeysImport))
 	m.Handle("GET /api/tables/{name}/export", s.auth(auth.RoleReader, s.handleTableExport))

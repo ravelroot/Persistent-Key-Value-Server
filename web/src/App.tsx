@@ -162,7 +162,31 @@ function Shell({ user, theme, toggleTheme, onLogout, onUser }: { user: User; the
         { id: 'flush', group: 'Motor', label: 'Gravar a memtable em disco', hint: 'Transforma a memtable atual numa SSTable no L0.', icon: 'download', keywords: 'flush memtable', run: () => run('Memtable gravada.', api.flush) },
         { id: 'compact', group: 'Motor', label: 'Compactar todos os níveis', hint: 'Mistura as SSTables e descarta versões que ninguém mais vê.', icon: 'layers', keywords: 'compact compactação', run: () => run('Compactação iniciada.', api.compact) },
         { id: 'checkpoint', group: 'Motor', label: 'Criar checkpoint', hint: 'Cópia consistente do banco na pasta checkpoints.', icon: 'bookmark', keywords: 'backup checkpoint cópia', run: () => run('Checkpoint criado.', api.checkpoint) },
+        {
+          id: 'verify',
+          group: 'Motor',
+          label: 'Verificar integridade',
+          hint: 'Relê todas as SSTables vivas e confere o CRC32C de cada bloco.',
+          icon: 'shield',
+          keywords: 'verify crc checksum integridade',
+          run: () =>
+            api.verify().then(
+              (r) => (r.corrupt.length ? toast.error(new Error(`${r.corrupt.length} de ${r.files} arquivos com problema. Veja em Armazenamento.`)) : toast.ok(`${r.files} arquivos conferidos, nenhum problema.`)),
+              toast.error,
+            ),
+        },
       )
+    }
+    if (canRole(user, 'admin')) {
+      actions.push({
+        id: 'auditoria-csv',
+        group: 'Administração',
+        label: 'Exportar auditoria em CSV',
+        hint: 'Baixa os últimos 1 000 registros de auditoria.',
+        icon: 'download',
+        keywords: 'auditoria log csv exportar',
+        run: () => api.auditExport('csv').then((name) => toast.ok(`Auditoria exportada para ${name}.`), toast.error),
+      })
     }
     actions.push({ id: 'sair', group: 'Conta', label: 'Sair', icon: 'logout', keywords: 'logout sair', run: onLogout })
     return [...nav, ...actions]

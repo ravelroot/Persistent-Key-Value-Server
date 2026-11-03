@@ -23,6 +23,16 @@
   <img src="docs/images/tela-visao-geral.png?v=1.2.2" alt="Visão geral: a coluna de estratos com a memtable em âmbar e os níveis L0 a L6 em tons de grafite, ao lado do tráfego por segundo">
 </p>
 
+## Novidades da 1.3
+
+- **Prefixos das chaves:** a tela Chaves abre com o mapa dos prefixos (`sessao:`, `cache:`, `produto:`…), com quantidade, fatia do total, bytes e quantas têm TTL. Um clique filtra a lista pelo prefixo. O separador pode ser `:`, `.`, `/`, `_` ou `-`. No servidor é o comando novo `ARCA.NAMESPACES`; na API, `GET /api/keys/namespaces`.
+- **Apagar por padrão:** com um padrão como `cache:*` na busca, o botão **Apagar padrão** mostra quantas chaves casam e uma amostra antes de apagar, e só então remove tudo em lotes (até 50 000 por vez). As chaves internas do painel nunca entram na conta. Vai para a auditoria e dispara o webhook `key.delete`.
+- **`EXPIRE` com condição:** `EXPIRE`, `PEXPIRE`, `EXPIREAT` e `PEXPIREAT` aceitam `NX` (só se não tem prazo), `XX` (só se já tem), `GT` (só para aumentar) e `LT` (só para diminuir), como no Redis 7.
+- **`LCS`:** maior subsequência comum entre os valores de duas chaves, ou só o tamanho com `LEN`.
+- **Funções SQL novas:** `TRIM`, `LTRIM`, `RTRIM`, `SUBSTR`/`SUBSTRING`, `REPLACE`, `CONCAT`, `INSTR`, `IFNULL`, `NULLIF`, `FLOOR`, `CEIL` e `TYPEOF`, em `SELECT`, `WHERE` e `UPDATE`.
+- **Auditoria exportável:** botões **Exportar CSV** e **JSON** na aba Auditoria (até 10 000 registros pela API em `GET /api/audit/export`).
+- **Paleta de comandos:** ações novas para verificar a integridade das SSTables e exportar a auditoria sem sair da tela atual.
+
 ## Novidades da 1.2
 
 - **Visual novo, "estratos e grafite":** o painel ganhou identidade própria. A visão geral abre com a coluna de estratos, que mostra a memtable (memória, em âmbar) por cima dos níveis L0 a L6 (disco, em tons de grafite do claro ao quase preto) com espessura proporcional ao tamanho; quando há compactação, as faixas mostram os dados descendo. Barra de status fixa no rodapé, tema escuro revisto e textos reescritos para dizer o que cada coisa faz.
@@ -41,8 +51,8 @@
 - **Concorrência:** escritores entram numa fila com group commit (um líder grava o lote de todos), leitores não travam a memtable, versões são imutáveis e compartilhadas, e o cache de blocos e o de tabelas usam mutex por fatia e `shared_mutex`.
 - **Snapshots MVCC:** cada escrita recebe um número de sequência; leituras e varreduras enxergam um retrato consistente e a compactação preserva o que algum snapshot ainda vê.
 - **Servidor TCP assíncrono:** laços de eventos com epoll (Linux), poll (macOS) ou WSAPoll (Windows), pipelining, e um pool de workers para comandos pesados sem travar a rede.
-- **Compatível com o Redis:** fala RESP2, então `redis-cli` e bibliotecas de Redis funcionam. Strings, TTL, contadores, `SCAN`, `MULTI/EXEC`, `INFO`, `SLOWLOG`, `CLIENT LIST`.
-- **Tabelas com SQL:** `CREATE TABLE`, índices secundários, `INSERT`, `SELECT` com `WHERE`, `GROUP BY`, `ORDER BY`, agregações e `EXPLAIN`, `UPDATE`, `DELETE`, `ALTER TABLE ADD COLUMN`, tudo gravado na mesma LSM-Tree.
+- **Compatível com o Redis:** fala RESP2, então `redis-cli` e bibliotecas de Redis funcionam. Strings, TTL (com `NX`/`XX`/`GT`/`LT`), contadores, `LCS`, `SCAN`, `MULTI/EXEC`, `INFO`, `SLOWLOG`, `CLIENT LIST`.
+- **Tabelas com SQL:** `CREATE TABLE`, índices secundários, `INSERT`, `SELECT` com `WHERE`, `GROUP BY`, `ORDER BY`, agregações, funções de texto e número e `EXPLAIN`, `UPDATE`, `DELETE`, `ALTER TABLE ADD COLUMN`, tudo gravado na mesma LSM-Tree.
 - **Painel web e API:** gateway em Go com API REST, eventos em tempo real (SSE), papéis e auditoria; painel em React para ver níveis, SSTables, chaves, tabelas e rodar SQL.
 - **Integrações:** chaves de acesso para scripts e serviços, webhooks assinados, métricas no formato do Prometheus, importação e exportação em JSON e CSV, e o esquema OpenAPI da API.
 - **Identidade "estratos e grafite":** a Arca guarda dados que descem em camadas, então o painel desenha isso. Disco é grafite neutro, do cinza claro `#E4E4E6` no L0 ao quase preto `#1F1F23` no L6, como estratos de rocha; memória é a única cor quente (âmbar `#C98B1E`, com hachura enquanto o dado ainda não virou arquivo). Fundo `#F4F4F5`, tinta `#161618`, destaque `#2B2B2E`. Tudo em Archivo, com o eixo de largura condensado nos títulos e números; código, chaves e SQL em IBM Plex Mono. Cor só onde informa: o que está em memória, avisos e erros.
@@ -174,17 +184,27 @@ Por outros clientes, mande o SQL como argumento: `SQL "SELECT ..."` (resposta em
 | Grupo | Comandos |
 |---|---|
 | Conexão | `PING` · `ECHO` · `AUTH` · `HELLO` · `SELECT 0` · `QUIT` · `CLIENT ID/SETNAME/GETNAME/LIST` |
-| Strings | `GET` · `SET` (`EX` `PX` `EXAT` `PXAT` `NX` `XX` `GET` `KEEPTTL`) · `SETNX` · `SETEX` · `PSETEX` · `GETSET` · `GETDEL` · `GETEX` · `GETRANGE` · `SETRANGE` · `MGET` · `MSET` · `MSETNX` · `APPEND` · `STRLEN` · `INCR` · `DECR` · `INCRBY` · `DECRBY` · `INCRBYFLOAT` |
-| Chaves | `DEL` · `UNLINK` · `EXISTS` · `TYPE` · `COPY` · `TOUCH` · `RANDOMKEY` · `RENAME` · `RENAMENX` · `EXPIRE` · `PEXPIRE` · `EXPIREAT` · `PEXPIREAT` · `EXPIRETIME` · `PEXPIRETIME` · `TTL` · `PTTL` · `PERSIST` · `MEMORY USAGE` · `SCAN` · `KEYS` · `DBSIZE` · `FLUSHDB` |
+| Strings | `GET` · `SET` (`EX` `PX` `EXAT` `PXAT` `NX` `XX` `GET` `KEEPTTL`) · `SETNX` · `SETEX` · `PSETEX` · `GETSET` · `GETDEL` · `GETEX` · `GETRANGE` · `SETRANGE` · `MGET` · `MSET` · `MSETNX` · `APPEND` · `STRLEN` · `INCR` · `DECR` · `INCRBY` · `DECRBY` · `INCRBYFLOAT` · `LCS` (`LEN`) |
+| Chaves | `DEL` · `UNLINK` · `EXISTS` · `TYPE` · `COPY` · `TOUCH` · `RANDOMKEY` · `RENAME` · `RENAMENX` · `EXPIRE` · `PEXPIRE` · `EXPIREAT` · `PEXPIREAT` (`NX` `XX` `GT` `LT`) · `EXPIRETIME` · `PEXPIRETIME` · `TTL` · `PTTL` · `PERSIST` · `MEMORY USAGE` · `SCAN` · `KEYS` · `DBSIZE` · `FLUSHDB` |
 | Transações | `MULTI` · `EXEC` · `DISCARD` |
 | SQL | `SQL` · `SQL.JSON` · `SQL.TABLES` |
 | Servidor | `INFO` · `CONFIG GET/SET` · `SLOWLOG GET/LEN/RESET` · `SAVE` · `BGSAVE` · `LASTSAVE` · `TIME` · `SHUTDOWN` |
-| Arca | `ARCA.STATS` (JSON) · `ARCA.FLUSH` · `ARCA.COMPACT` · `ARCA.CHECKPOINT [nome]` · `ARCA.CHECKPOINTS [DELETE nome]` · `ARCA.VERIFY` · `ARCA.SNAPSHOT BEGIN/END` · `ARCA.SCANJSON` |
+| Arca | `ARCA.STATS` (JSON) · `ARCA.FLUSH` · `ARCA.COMPACT` · `ARCA.CHECKPOINT [nome]` · `ARCA.CHECKPOINTS [DELETE nome]` · `ARCA.VERIFY` · `ARCA.NAMESPACES [SEP s] [LIMIT n] [EXCLUDE prefixo]` · `ARCA.SNAPSHOT BEGIN/END` · `ARCA.SCANJSON` |
 
 ```bash
 redis-cli -p 7379 -a "$ARCA_PASSWORD" GETEX sessao:42 EX 7200          # lê e renova o TTL
 redis-cli -p 7379 -a "$ARCA_PASSWORD" COPY produto:1 produto:1:rascunho  # copia valor e TTL
 redis-cli -p 7379 -a "$ARCA_PASSWORD" ARCA.VERIFY                        # confere o CRC32C de todas as SSTables
+redis-cli -p 7379 -a "$ARCA_PASSWORD" EXPIRE sessao:42 600 GT            # só aumenta o prazo, nunca encurta
+redis-cli -p 7379 -a "$ARCA_PASSWORD" LCS rascunho:1 rascunho:2 LEN      # tamanho da maior subsequência comum
+redis-cli -p 7379 -a "$ARCA_PASSWORD" ARCA.NAMESPACES SEP : LIMIT 10     # chaves agrupadas por prefixo, em JSON
+```
+
+Funções do SQL: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `LOWER`, `UPPER`, `LENGTH`, `ABS`, `ROUND`, `COALESCE`, `IFNULL`, `NULLIF`, `TRIM`, `LTRIM`, `RTRIM`, `SUBSTR`/`SUBSTRING`, `REPLACE`, `CONCAT`, `INSTR`, `FLOOR`, `CEIL` e `TYPEOF`.
+
+```sql
+SELECT TRIM(titular) AS nome, SUBSTR(cidade, 1, 3) AS uf, FLOOR(saldo) AS inteiro FROM contas WHERE INSTR(titular, 'An') > 0;
+UPDATE contas SET cidade = REPLACE(cidade, 'Niteroi', 'Niterói') WHERE cidade LIKE 'Nit%';
 ```
 
 ## O painel
@@ -225,11 +245,11 @@ Todas as rotas ficam em `/api`, respondem JSON e exigem `Authorization: Bearer <
 |---|---|
 | Acesso | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `PUT /auth/me/password` |
 | Monitoramento | `GET /overview` · `GET /events` (SSE) · `GET /storage` · `GET /clients` · `GET /slowlog` · `GET /health` |
-| Chaves | `GET /keys` · `GET`, `PUT` e `DELETE /keys/value` · `POST /keys/expire` · `GET /keys/export` · `POST /keys/import` |
+| Chaves | `GET /keys` · `GET`, `PUT` e `DELETE /keys/value` · `POST /keys/expire` · `GET /keys/namespaces` · `POST /keys/delete-match` · `GET /keys/export` · `POST /keys/import` |
 | Tabelas e SQL | `GET /tables` · `GET`, `POST`, `PUT` e `DELETE /tables/{nome}/rows` · `GET /tables/{nome}/export` · `POST /tables/{nome}/import` · `POST /sql` · `GET`, `POST` e `DELETE /queries` |
 | Operação | `POST /storage/flush` · `POST /storage/compact` · `POST /storage/checkpoint` · `GET` e `DELETE /storage/checkpoints` · `POST /storage/verify` |
 | Integração | `GET /integrations` · `GET`, `POST` e `DELETE /tokens` · `GET`, `POST`, `PATCH` e `DELETE /webhooks` · `POST /webhooks/{id}/test` · `GET /webhooks/{id}/deliveries` · `GET /metrics` (fora de `/api`) |
-| Administração | `POST /command` · `GET` e `PUT /config` · `GET`, `POST`, `PATCH` e `DELETE /users` · `GET /audit` |
+| Administração | `POST /command` · `GET` e `PUT /config` · `GET`, `POST`, `PATCH` e `DELETE /users` · `GET /audit` · `GET /audit/export` |
 
 ```bash
 TOKEN=$(curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' \
@@ -239,6 +259,11 @@ curl -s -X POST localhost:8080/api/sql -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"query":"SELECT * FROM produtos ORDER BY preco DESC LIMIT 5"}'
 
 curl -s localhost:8080/api/tables/produtos/export?format=csv -H "Authorization: Bearer $TOKEN" -o produtos.csv
+
+curl -s localhost:8080/api/keys/namespaces?sep=: -H "Authorization: Bearer $TOKEN"
+
+curl -s -X POST localhost:8080/api/keys/delete-match -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"match":"cache:*","dry_run":true}'
 ```
 
 ## Integrações
@@ -343,7 +368,7 @@ O exemplo completo está em [`examples/embedded.cpp`](examples/embedded.cpp).
 | Chaves de acesso | Mostradas uma única vez, guardadas só como SHA-256, com papel limitado ao do dono, validade opcional e registro do último uso |
 | Webhooks | Corpo assinado com HMAC-SHA256 e segredo próprio por webhook, que pode ser trocado a qualquer momento |
 | Papéis | Leitura, Operador e Administrador, checados em cada rota |
-| Auditoria | Logins, gravações, importações, SQL de escrita, flush, compactação, checkpoint, configuração, chaves de acesso, webhooks e usuários |
+| Auditoria | Logins, gravações, importações, remoções por padrão, SQL de escrita, flush, compactação, checkpoint, configuração, chaves de acesso, webhooks e usuários, com exportação em CSV ou JSON |
 | Cabeçalhos | `Content-Security-Policy`, `X-Frame-Options: DENY`, `nosniff` e `Cache-Control: no-store` na API |
 | Repositório | Nenhum dado pessoal real. Segredos só no `.env`, que fica fora do Git |
 
@@ -380,7 +405,7 @@ cd gateway && go test ./...
 cd web && npm ci && npm run build
 ```
 
-Os testes do motor comparam milhares de escritas e remoções aleatórias com um `std::map` antes e depois da compactação e depois de reabrir o banco, cortam o fim do WAL para simular queda, conferem snapshots durante a compactação, escrevem de várias threads ao mesmo tempo e abrem um checkpoint como banco. Os do servidor sobem a Arca numa porta livre e testam comandos, expiração, `MULTI/EXEC`, pipelining, SQL, senha, checkpoints e a verificação de integridade (inclusive com uma SSTable corrompida de propósito). Os do gateway cobrem chaves de acesso, papéis, webhooks com assinatura conferida, `/metrics`, importação e exportação.
+Os testes do motor comparam milhares de escritas e remoções aleatórias com um `std::map` antes e depois da compactação e depois de reabrir o banco, cortam o fim do WAL para simular queda, conferem snapshots durante a compactação, escrevem de várias threads ao mesmo tempo e abrem um checkpoint como banco. Os do servidor sobem a Arca numa porta livre e testam comandos, expiração (inclusive `NX`, `XX`, `GT` e `LT`), `LCS`, `ARCA.NAMESPACES`, `MULTI/EXEC`, pipelining, SQL com as funções de texto e número, senha, checkpoints e a verificação de integridade (inclusive com uma SSTable corrompida de propósito). Os do gateway cobrem chaves de acesso, papéis, webhooks com assinatura conferida, `/metrics`, importação e exportação, prefixos, remoção por padrão (sem tocar nas chaves do painel) e a exportação da auditoria.
 
 O workflow [`ci.yml`](.github/workflows/ci.yml) compila com GCC, Clang e MSVC, roda os testes com AddressSanitizer e ThreadSanitizer, testa o gateway e o painel e monta as imagens Docker.
 
