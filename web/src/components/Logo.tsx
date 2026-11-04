@@ -15,22 +15,9 @@ export function Logo({ size = 28, title, className }: LogoProps) {
       aria-hidden={title ? undefined : true}
       aria-label={title}
     >
-      <path fill="currentColor" d="M14 22H106C106 46 88 60 60 60C32 60 14 46 14 22Z" />
       <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M14 78q11.5 -8 23 0t23 0t23 0t23 0"
-      />
-      <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M14 94q11.5 -8 23 0t23 0t23 0t23 0"
+        fill="currentColor"
+        d="M14 64A46 46 0 0 1 106 64H98A38 38 0 0 0 22 64ZM27 64A33 33 0 0 1 93 64H85A25 25 0 0 0 35 64ZM40 64A20 20 0 0 1 80 64H72A12 12 0 0 0 48 64ZM14 72H106C104 90 86 102 60 102C34 102 16 90 14 72Z"
       />
     </svg>
   )

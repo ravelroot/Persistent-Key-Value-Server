@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo-quadrado.png" width="200" alt="Arca">
+  <img src="docs/images/logo-quadrado.png?v=1.3.0" width="200" alt="Arca">
 </p>
 
 <h1 align="center">Arca<br><sub><sup><sup><sub>Copyright (©) 2026 Erik Pimenta</sub></sup></sup></sub></h1>
@@ -20,7 +20,7 @@
 > **Banco de dados:** [`Banco-de-Dados-Arca.pdf`](Banco-de-Dados-Arca.pdf) descreve a arquitetura de armazenamento que a aplicação segue: LSM-Tree, formato do WAL, das SSTables e do MANIFEST, codificação das chaves e das linhas, compactação, checkpoints, verificação de integridade e recuperação.
 
 <p align="center">
-  <img src="docs/images/tela-visao-geral.png?v=1.2.2" alt="Visão geral: a coluna de estratos com a memtable em âmbar e os níveis L0 a L6 em tons de grafite, ao lado do tráfego por segundo">
+  <img src="docs/images/tela-visao-geral.png?v=1.3.0" alt="Visão geral: a coluna de estratos com a memtable em âmbar e os níveis L0 a L6 em tons de grafite, ao lado do tráfego por segundo">
 </p>
 
 ## Novidades da 1.3
@@ -101,7 +101,7 @@ flowchart LR
 Memtable atual → memtable imutável → SSTables do L0 da mais nova para a mais antiga → um arquivo por nível a partir do L1 (busca binária pelo intervalo de chaves). Em cada SSTable o filtro de Bloom evita a leitura do disco quando a chave não está lá, e o cache de blocos guarda os blocos mais usados.
 
 <p align="center">
-  <img src="docs/images/tela-armazenamento.png?v=1.2.2" alt="Níveis da LSM-Tree com cada SSTable, checkpoints e verificação de integridade">
+  <img src="docs/images/tela-armazenamento.png?v=1.3.0" alt="Níveis da LSM-Tree com cada SSTable, checkpoints e verificação de integridade">
 </p>
 
 ## Como rodar
@@ -211,10 +211,10 @@ UPDATE contas SET cidade = REPLACE(cidade, 'Niteroi', 'Niterói') WHERE cidade L
 
 | Tela | |
 |---|---|
-| <img src="docs/images/tela-integracoes.png?v=1.2.2" alt="Integrações com exemplos de código por linguagem"> | <img src="docs/images/tela-paleta.png?v=1.2.2" alt="Paleta de comandos aberta com Ctrl K"> |
-| <img src="docs/images/tela-sql.png?v=1.2.2" alt="Console SQL com consultas salvas e plano"> | <img src="docs/images/tela-tabelas.png?v=1.2.2" alt="Grade de linhas de uma tabela com importar e exportar"> |
-| <img src="docs/images/tela-chaves.png?v=1.2.2" alt="Chaves com TTL, importar e exportar"> | <img src="docs/images/tela-clientes.png?v=1.2.2" alt="Clientes conectados e comandos lentos"> |
-| <img src="docs/images/tela-usuarios.png?v=1.2.2" alt="Usuários e auditoria"> | <img src="docs/images/tela-escuro.png?v=1.2.2" alt="Painel no tema escuro"> |
+| <img src="docs/images/tela-integracoes.png?v=1.3.0" alt="Integrações com exemplos de código por linguagem"> | <img src="docs/images/tela-paleta.png?v=1.3.0" alt="Paleta de comandos aberta com Ctrl K"> |
+| <img src="docs/images/tela-sql.png?v=1.3.0" alt="Console SQL com consultas salvas e plano"> | <img src="docs/images/tela-tabelas.png?v=1.3.0" alt="Grade de linhas de uma tabela com importar e exportar"> |
+| <img src="docs/images/tela-chaves.png?v=1.3.0" alt="Chaves com TTL, importar e exportar"> | <img src="docs/images/tela-clientes.png?v=1.3.0" alt="Clientes conectados e comandos lentos"> |
+| <img src="docs/images/tela-usuarios.png?v=1.3.0" alt="Usuários e auditoria"> | <img src="docs/images/tela-escuro.png?v=1.3.0" alt="Painel no tema escuro"> |
 
 | Atalho | O que faz |
 |---|---|
@@ -272,7 +272,7 @@ A tela **Integrações** junta tudo o que liga a Arca a outros sistemas.
 
 | | |
 |---|---|
-| <img src="docs/images/tela-webhooks.png?v=1.2.2" alt="Webhooks com estado da última entrega e exemplo de verificação da assinatura"> | <img src="docs/images/tela-chaves-de-acesso.png?v=1.2.2" alt="Chaves de acesso com papel, último uso e validade"> |
+| <img src="docs/images/tela-webhooks.png?v=1.3.0" alt="Webhooks com estado da última entrega e exemplo de verificação da assinatura"> | <img src="docs/images/tela-chaves-de-acesso.png?v=1.3.0" alt="Chaves de acesso com papel, último uso e validade"> |
 
 | Recurso | Como usar |
 |---|---|
